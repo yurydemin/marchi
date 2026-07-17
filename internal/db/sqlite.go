@@ -45,6 +45,30 @@ func Open(path string) (*sql.DB, error) {
 	return sqlDB, nil
 }
 
+// Close checkpoints the WAL (NFR-RL-05's "flush SQLite WAL" on graceful
+// shutdown — folds the WAL file's contents back into the main database
+// file and truncates it, rather than leaving pending writes for the next
+// startup to replay) and then closes the database.
+//
+// A checkpoint failure doesn't prevent closing: an un-checkpointed WAL is
+// still safely replayed the next time SQLite opens the database, so this
+// returns the checkpoint error (for the caller to log) but always still
+// calls sqlDB.Close() regardless.
+func Close(sqlDB *sql.DB) error {
+	_, checkpointErr := sqlDB.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	closeErr := sqlDB.Close()
+
+	switch {
+	case checkpointErr != nil && closeErr != nil:
+		return fmt.Errorf("db: wal checkpoint failed (%v) and close also failed: %w", checkpointErr, closeErr)
+	case checkpointErr != nil:
+		return fmt.Errorf("db: wal checkpoint: %w", checkpointErr)
+	case closeErr != nil:
+		return fmt.Errorf("db: close: %w", closeErr)
+	}
+	return nil
+}
+
 func applyMigrations(sqlDB *sql.DB) error {
 	driver, err := migratesqlite.WithInstance(sqlDB, &migratesqlite.Config{})
 	if err != nil {

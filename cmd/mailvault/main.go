@@ -2,8 +2,13 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -14,11 +19,40 @@ import (
 	"github.com/yurydemin/marchi/internal/version"
 )
 
+// gracefulShutdownTimeout is NFR-RL-05's 30 seconds: how long a command
+// gets to wind down after SIGINT/SIGTERM before this process force-exits.
+const gracefulShutdownTimeout = 30 * time.Second
+
 func main() {
-	if err := newRootCmd().Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go forceExitOnTimeout(ctx, gracefulShutdownTimeout)
+
+	err := newRootCmd().ExecuteContext(ctx)
+	if err == nil {
+		return
 	}
+	if errors.Is(err, context.Canceled) {
+		// A deliberate, successful shutdown (SIGINT/SIGTERM), not a failure
+		// — exit 0 rather than printing a scary "Error: context canceled".
+		fmt.Fprintln(os.Stderr, "mailvault: shutdown requested, exited cleanly")
+		return
+	}
+	fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}
+
+// forceExitOnTimeout waits for a shutdown signal, then force-exits if the
+// process hasn't wound down on its own within timeout (NFR-RL-05: "если не
+// завершилось — force exit"). If the process exits normally beforehand,
+// this goroutine is simply torn down with everything else — no explicit
+// cleanup needed for a program that's already terminating.
+func forceExitOnTimeout(ctx context.Context, timeout time.Duration) {
+	<-ctx.Done()
+	time.Sleep(timeout)
+	fmt.Fprintln(os.Stderr, "mailvault: graceful shutdown timed out, forcing exit")
+	os.Exit(1)
 }
 
 func newRootCmd() *cobra.Command {

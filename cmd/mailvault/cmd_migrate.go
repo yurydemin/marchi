@@ -21,7 +21,7 @@ func newMigrateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer sqlDB.Close()
+			defer closeDB(logger, sqlDB)
 
 			logger.Info("migrations applied", zap.String("path", cfg.Database.SQLite.Path))
 			fmt.Fprintf(cmd.OutOrStdout(), "Migrations applied: %s\n", cfg.Database.SQLite.Path)

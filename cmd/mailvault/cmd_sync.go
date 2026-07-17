@@ -32,7 +32,7 @@ func newSyncCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer sqlDB.Close()
+			defer closeDB(logger, sqlDB)
 
 			w := writer.New(sqlDB)
 			defer w.Close()

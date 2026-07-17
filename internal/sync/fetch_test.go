@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -343,5 +344,58 @@ func TestFetchNewMessages_ExtractsAttachments(t *testing.T) {
 	}
 	if att.Size == 0 {
 		t.Error("Size should be non-zero")
+	}
+}
+
+// TestFetchNewMessages_StopsOnCancelledContext covers NFR-RL-05's graceful
+// shutdown: FetchNewMessages must not start archiving anything once ctx is
+// already cancelled by the time it's called (the same ctx SIGINT/SIGTERM
+// cancels in the real CLI, per main.go's signal.NotifyContext wiring).
+func TestFetchNewMessages_StopsOnCancelledContext(t *testing.T) {
+	env := newFetchTestEnv(t)
+
+	addr := startFakeFetchServer(t, fakeFetchServer{
+		uidValidity: 1001,
+		uidNext:     4,
+		messages: []fakeMessage{
+			{uid: 1, body: testEmail("a")},
+			{uid: 2, body: testEmail("b")},
+			{uid: 3, body: testEmail("c")},
+		},
+	})
+	c := connectToFakeServer(t, addr)
+	defer c.Logout()
+
+	folder, err := env.foldersR.UpsertFolder(context.Background(), env.accountID, "INBOX", 1001)
+	if err != nil {
+		t.Fatalf("UpsertFolder: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled before FetchNewMessages is even called
+
+	mw := env.newWriter(t, "INBOX")
+	stats, err := FetchNewMessages(ctx, c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if stats.Archived != 0 {
+		t.Errorf("Archived = %d, want 0 — no new work should start once ctx is cancelled", stats.Archived)
+	}
+
+	emails, err := env.emailsR.ListByFolder(context.Background(), folder.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(emails) != 0 {
+		t.Errorf("got %d emails archived, want 0", len(emails))
+	}
+
+	updated, err := env.foldersR.ListByAccount(context.Background(), env.accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated[0].LastUID != 0 {
+		t.Errorf("LastUID = %d, want 0 — nothing should have been marked archived, so a retry picks up everything (NFR-RL-02)", updated[0].LastUID)
 	}
 }

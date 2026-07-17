@@ -154,3 +154,37 @@ func TestOpen_RulesTableHasThreeRetentionColumns(t *testing.T) {
 		}
 	}
 }
+
+func TestClose_ChecksAndCloses(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mailvault.db")
+	sqlDB, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if _, err := sqlDB.Exec(`INSERT INTO accounts (email, imap_host) VALUES ('a@example.com', 'h')`); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	if err := Close(sqlDB); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// The *sql.DB should genuinely be closed — further use must fail.
+	if err := sqlDB.Ping(); err == nil {
+		t.Error("expected Ping to fail after Close, got nil error")
+	}
+
+	// Reopening must see the data Close was supposed to have flushed.
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopening after Close: %v", err)
+	}
+	defer reopened.Close()
+	var count int
+	if err := reopened.QueryRow(`SELECT COUNT(*) FROM accounts`).Scan(&count); err != nil {
+		t.Fatalf("counting accounts: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("got %d accounts after reopen, want 1 (Close should have flushed the WAL)", count)
+	}
+}

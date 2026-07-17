@@ -49,7 +49,7 @@ func newAddAccountCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer sqlDB.Close()
+			defer closeDB(logger, sqlDB)
 
 			w := writer.New(sqlDB)
 			defer w.Close()
@@ -98,12 +98,13 @@ func newListAccountsCmd() *cobra.Command {
 		Short: "List configured IMAP accounts",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := configFrom(cmd.Context())
+			logger := loggerFrom(cmd.Context())
 
 			sqlDB, err := db.Open(cfg.Database.SQLite.Path)
 			if err != nil {
 				return err
 			}
-			defer sqlDB.Close()
+			defer closeDB(logger, sqlDB)
 
 			accounts, err := repo.NewAccountsRepo(sqlDB, nil).List(cmd.Context())
 			if err != nil {

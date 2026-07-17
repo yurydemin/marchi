@@ -21,12 +21,13 @@ func newStatusCmd() *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := configFrom(cmd.Context())
+			logger := loggerFrom(cmd.Context())
 
 			sqlDB, err := db.Open(cfg.Database.SQLite.Path)
 			if err != nil {
 				return err
 			}
-			defer sqlDB.Close()
+			defer closeDB(logger, sqlDB)
 
 			accountsRepo := repo.NewAccountsRepo(sqlDB, nil)
 			syncLogsRepo := repo.NewSyncLogsRepo(sqlDB, nil)

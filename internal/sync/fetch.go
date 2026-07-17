@@ -68,6 +68,9 @@ func FetchNewMessages(
 	if !folder.SyncEnabled {
 		return FetchStats{}, nil
 	}
+	if ctx.Err() != nil { // graceful shutdown already requested (NFR-RL-05): skip this folder entirely
+		return FetchStats{}, ctx.Err()
+	}
 
 	rawName, err := imapclient.EncodeFolderName(folder.FolderName)
 	if err != nil {
@@ -98,6 +101,15 @@ func FetchNewMessages(
 	for msg := range messages {
 		if firstErr != nil {
 			continue // drain the rest without processing, preserving UID order
+		}
+		// Graceful shutdown (NFR-RL-05): stop starting new work once a
+		// SIGINT/SIGTERM has been requested, but don't interrupt whatever
+		// archiveOne call might already be in flight — Single Writer's own
+		// Close() (called during the CLI command's unwind) already waits
+		// for that one to finish rather than cutting it off mid-write.
+		if ctx.Err() != nil {
+			firstErr = ctx.Err()
+			continue
 		}
 		stats.Processed++
 		archivedBytes, archErr := archiveOne(ctx, msg, section, accountID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo)
