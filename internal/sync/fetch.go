@@ -51,6 +51,7 @@ func FetchNewMessages(
 	w writer.Writer,
 	emailsRepo *repo.EmailsRepo,
 	foldersRepo *repo.FoldersRepo,
+	attachmentsRepo *repo.AttachmentsRepo,
 ) (fetched int, err error) {
 	if !folder.SyncEnabled {
 		return 0, nil
@@ -86,7 +87,7 @@ func FetchNewMessages(
 		if firstErr != nil {
 			continue // drain the rest without processing, preserving UID order
 		}
-		if archErr := archiveOne(ctx, msg, section, accountID, folder, mw, w, emailsRepo, foldersRepo); archErr != nil {
+		if archErr := archiveOne(ctx, msg, section, accountID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo); archErr != nil {
 			firstErr = fmt.Errorf("sync: archiving UID %d in %q: %w", msg.Uid, folder.FolderName, archErr)
 			continue
 		}
@@ -114,6 +115,7 @@ func archiveOne(
 	w writer.Writer,
 	emailsRepo *repo.EmailsRepo,
 	foldersRepo *repo.FoldersRepo,
+	attachmentsRepo *repo.AttachmentsRepo,
 ) error {
 	body := msg.GetBody(section)
 	if body == nil {
@@ -129,6 +131,7 @@ func archiveOne(
 	if messageID == "" {
 		messageID = fmt.Sprintf("<no-message-id-%d-%d-%d@mailvault.local>", accountID, folder.ID, msg.Uid)
 	}
+	attachments := mimeparse.ParseAttachments(raw)
 
 	maildirFlags := toMaildirFlags(msg.Flags)
 	tmpPath, err := mw.Stage(raw, maildirFlags)
@@ -147,15 +150,27 @@ func archiveOne(
 		CcAddrs:         md.Cc,
 		Date:            md.Date,
 		Size:            int64(len(raw)),
-		HasAttachments:  false, // determined in a later step (attachment extraction)
+		HasAttachments:  len(attachments) > 0,
 		Flags:           msg.Flags,
 		StorageLocation: "local",
 		LocalPath:       mw.FinalPath(tmpPath),
 	}
 
 	err = w.Do(ctx, func(tx *sql.Tx) error {
-		if _, err := emailsRepo.Insert(ctx, tx, email); err != nil {
+		emailID, err := emailsRepo.Insert(ctx, tx, email)
+		if err != nil {
 			return err
+		}
+		for _, att := range attachments {
+			if _, err := attachmentsRepo.Insert(ctx, tx, &domain.Attachment{
+				EmailID:   emailID,
+				Filename:  att.Filename,
+				MIMEType:  att.MIMEType,
+				Size:      att.Size,
+				ContentID: att.ContentID,
+			}); err != nil {
+				return err
+			}
 		}
 		return foldersRepo.UpdateLastUID(ctx, tx, folder.ID, msg.Uid)
 	})

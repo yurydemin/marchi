@@ -35,6 +35,7 @@ func SyncAccount(
 	w writer.Writer,
 	foldersRepo *repo.FoldersRepo,
 	emailsRepo *repo.EmailsRepo,
+	attachmentsRepo *repo.AttachmentsRepo,
 ) ([]FolderResult, error) {
 	c, err := imapclient.Connect(ctx, imapclient.ConnectOptions{
 		Host:     a.IMAPHost,
@@ -70,7 +71,7 @@ func SyncAccount(
 		}
 		mw := maildir.NewWriter(layout, host)
 
-		fetched, fetchErr := FetchNewMessages(ctx, c, a.ID, folder, mw, w, emailsRepo, foldersRepo)
+		fetched, fetchErr := FetchNewMessages(ctx, c, a.ID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo)
 		results = append(results, FolderResult{Folder: folder, Fetched: fetched})
 		if fetchErr != nil {
 			firstErr = fmt.Errorf("sync: fetching %q: %w", folder.FolderName, fetchErr)

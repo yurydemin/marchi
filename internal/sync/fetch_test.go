@@ -22,12 +22,13 @@ import (
 )
 
 type fetchTestEnv struct {
-	sqlDB       *sql.DB
-	w           writer.Writer
-	foldersR    *repo.FoldersRepo
-	emailsR     *repo.EmailsRepo
-	accountID   int64
-	maildirRoot string
+	sqlDB        *sql.DB
+	w            writer.Writer
+	foldersR     *repo.FoldersRepo
+	emailsR      *repo.EmailsRepo
+	attachmentsR *repo.AttachmentsRepo
+	accountID    int64
+	maildirRoot  string
 }
 
 func newFetchTestEnv(t *testing.T) *fetchTestEnv {
@@ -50,12 +51,13 @@ func newFetchTestEnv(t *testing.T) *fetchTestEnv {
 	}
 
 	return &fetchTestEnv{
-		sqlDB:       sqlDB,
-		w:           w,
-		foldersR:    repo.NewFoldersRepo(sqlDB, w),
-		emailsR:     repo.NewEmailsRepo(sqlDB, w),
-		accountID:   accountID,
-		maildirRoot: filepath.Join(dataDir, "maildir"),
+		sqlDB:        sqlDB,
+		w:            w,
+		foldersR:     repo.NewFoldersRepo(sqlDB, w),
+		emailsR:      repo.NewEmailsRepo(sqlDB, w),
+		attachmentsR: repo.NewAttachmentsRepo(sqlDB, w),
+		accountID:    accountID,
+		maildirRoot:  filepath.Join(dataDir, "maildir"),
 	}
 }
 
@@ -99,6 +101,28 @@ func testEmail(subject string) []byte {
 		"Body of " + subject + "\r\n")
 }
 
+func testEmailWithAttachment(subject, filename string) []byte {
+	return []byte("Message-Id: <" + subject + "@example.com>\r\n" +
+		"Subject: " + subject + "\r\n" +
+		"From: sender@example.com\r\n" +
+		"To: recipient@example.com\r\n" +
+		"Date: Mon, 2 Jan 2006 15:04:05 +0000\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/mixed; boundary=\"BOUNDARY\"\r\n" +
+		"\r\n" +
+		"--BOUNDARY\r\n" +
+		"Content-Type: text/plain\r\n" +
+		"\r\n" +
+		"Body of " + subject + "\r\n" +
+		"--BOUNDARY\r\n" +
+		"Content-Type: application/pdf\r\n" +
+		"Content-Disposition: attachment; filename=\"" + filename + "\"\r\n" +
+		"Content-Transfer-Encoding: base64\r\n" +
+		"\r\n" +
+		"UERGLUZJTEUtQ09OVEVOVC1CWVRFUw==\r\n" +
+		"--BOUNDARY--\r\n")
+}
+
 func TestFetchNewMessages_ArchivesEverythingAboveLastUID(t *testing.T) {
 	env := newFetchTestEnv(t)
 
@@ -121,7 +145,7 @@ func TestFetchNewMessages_ArchivesEverythingAboveLastUID(t *testing.T) {
 	}
 
 	mw := env.newWriter(t, "INBOX")
-	fetched, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR)
+	fetched, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
@@ -210,7 +234,7 @@ func TestFetchNewMessages_NoNewMessages_IsANoOp(t *testing.T) {
 	folder.LastUID = 3
 
 	mw := env.newWriter(t, "INBOX")
-	fetched, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR)
+	fetched, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
@@ -234,11 +258,81 @@ func TestFetchNewMessages_SkipsWhenSyncDisabled(t *testing.T) {
 	mw := env.newWriter(t, "INBOX")
 	// Deliberately nil client: FetchNewMessages must return before ever
 	// touching it, since sync_enabled=false is checked first.
-	fetched, err := FetchNewMessages(context.Background(), nil, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR)
+	fetched, err := FetchNewMessages(context.Background(), nil, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
 	if fetched != 0 {
 		t.Errorf("fetched = %d, want 0", fetched)
+	}
+}
+
+func TestFetchNewMessages_ExtractsAttachments(t *testing.T) {
+	env := newFetchTestEnv(t)
+
+	addr := startFakeFetchServer(t, fakeFetchServer{
+		uidValidity: 1001,
+		uidNext:     3,
+		messages: []fakeMessage{
+			{uid: 1, body: testEmail("no attachment here")},
+			{uid: 2, body: testEmailWithAttachment("has an attachment", "report.pdf")},
+		},
+	})
+	c := connectToFakeServer(t, addr)
+	defer c.Logout()
+
+	folder, err := env.foldersR.UpsertFolder(context.Background(), env.accountID, "INBOX", 1001)
+	if err != nil {
+		t.Fatalf("UpsertFolder: %v", err)
+	}
+
+	mw := env.newWriter(t, "INBOX")
+	fetched, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
+	if err != nil {
+		t.Fatalf("FetchNewMessages: %v", err)
+	}
+	if fetched != 2 {
+		t.Fatalf("fetched = %d, want 2", fetched)
+	}
+
+	emails, err := env.emailsR.ListByFolder(context.Background(), folder.ID)
+	if err != nil {
+		t.Fatalf("ListByFolder: %v", err)
+	}
+	if len(emails) != 2 {
+		t.Fatalf("got %d emails, want 2", len(emails))
+	}
+
+	if emails[0].HasAttachments {
+		t.Error("emails[0] (no attachment) has_attachments should be false")
+	}
+	if !emails[1].HasAttachments {
+		t.Error("emails[1] (with attachment) has_attachments should be true")
+	}
+
+	noneAttachments, err := env.attachmentsR.ListByEmail(context.Background(), emails[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(noneAttachments) != 0 {
+		t.Errorf("emails[0] should have 0 attachment rows, got %d", len(noneAttachments))
+	}
+
+	withAttachments, err := env.attachmentsR.ListByEmail(context.Background(), emails[1].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(withAttachments) != 1 {
+		t.Fatalf("emails[1] should have 1 attachment row, got %d", len(withAttachments))
+	}
+	att := withAttachments[0]
+	if att.Filename != "report.pdf" {
+		t.Errorf("Filename = %q", att.Filename)
+	}
+	if att.MIMEType != "application/pdf" {
+		t.Errorf("MIMEType = %q", att.MIMEType)
+	}
+	if att.Size == 0 {
+		t.Error("Size should be non-zero")
 	}
 }
