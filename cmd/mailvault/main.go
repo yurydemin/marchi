@@ -73,6 +73,7 @@ func newRootCmd() *cobra.Command {
 
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newUnlockCmd())
+	root.AddCommand(newMigrateCmd())
 
 	return root
 }
