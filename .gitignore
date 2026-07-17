@@ -1,0 +1,25 @@
+# Build artifacts
+/mailvault
+/dist/
+*.exe
+*.test
+*.out
+
+# Go
+/vendor/
+
+# Runtime data (Maildir, SQLite, Bluge index, cache, logs, Master Key salt)
+/data/
+*.db
+*.db-wal
+*.db-shm
+.salt
+
+# Local config overrides
+config.local.yaml
+.env
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
