@@ -77,6 +77,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newAddAccountCmd())
 	root.AddCommand(newListAccountsCmd())
 	root.AddCommand(newTestConnectionCmd())
+	root.AddCommand(newSyncCmd())
 
 	return root
 }

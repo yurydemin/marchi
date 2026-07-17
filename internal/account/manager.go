@@ -100,6 +100,17 @@ func (m *Manager) ListAccounts(ctx context.Context) ([]*domain.Account, error) {
 	return m.repo.List(ctx)
 }
 
+// DecryptPassword returns a's plaintext IMAP password, right before it's
+// needed to connect. Never stored, never logged — the caller should let it
+// go out of scope as soon as the connection is established.
+func (m *Manager) DecryptPassword(a *domain.Account) (string, error) {
+	plain, err := crypto.Decrypt(m.key, a.IMAPPasswordEncrypted, []byte(a.Email))
+	if err != nil {
+		return "", fmt.Errorf("account: decrypting password: %w", err)
+	}
+	return string(plain), nil
+}
+
 func validateAddAccountParams(p AddAccountParams) error {
 	if strings.TrimSpace(p.Email) == "" {
 		return fmt.Errorf("account: email is required")
