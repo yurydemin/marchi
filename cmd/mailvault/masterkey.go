@@ -40,7 +40,7 @@ func unlockMasterKey(cfg *config.Config, logger *zap.Logger) ([]byte, error) {
 	if firstRun {
 		fmt.Fprintln(os.Stdout, "No Master Key found — set a new password (minimum 12 characters).")
 	}
-	password, err := masterkey.PromptPassword(os.Stdin, os.Stdout, firstRun)
+	password, err := masterkey.PromptPassword(stdinSecrets, firstRun)
 	if err != nil {
 		return nil, err
 	}
