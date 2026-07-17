@@ -129,10 +129,25 @@ func FetchNewMessages(
 }
 
 // archiveOne implements NFR-RL-03's atomicity contract for a single
-// message: stage the raw bytes into Maildir tmp/, insert the emails row and
-// advance folders.last_uid in one Single-Writer transaction, and only then
-// commit tmp/ into new/. If staging or the SQL transaction fails, nothing
-// is left committed and the UID isn't advanced — the next sync retries it.
+// message: stage the raw bytes into Maildir tmp/, commit it into new/, and
+// only then insert the emails row and advance folders.last_uid in one
+// Single-Writer transaction.
+//
+// This order — Maildir commit before the SQL write — is deliberately the
+// reverse of an earlier draft (staging in tmp/ was always going to precede
+// SQL, per correction #10, but this step's crash-recovery test caught that
+// committing SQL *before* the Maildir rename has a real data-loss window: a
+// crash between the SQL commit and the rename leaves a committed emails row
+// (with last_uid already advanced past it) pointing at a file still sitting
+// in tmp/, and the next startup's tmp/ sweep deletes it — the row survives,
+// the content doesn't, and since last_uid already moved past this UID nothing
+// ever re-fetches it. Doing the rename first instead means the only failure
+// window left is the SQL write failing *after* the file already landed in
+// new/, which just leaves one orphaned, untracked file behind (no sweep
+// mechanism cleans new/) while last_uid stays put — annoying, not lossy: the
+// next sync just re-fetches and re-archives the same message under a fresh
+// filename. Between "silent data loss" and "a stray file", the second is the
+// only acceptable failure mode for an archiver.
 func archiveOne(
 	ctx context.Context,
 	msg *imap.Message,
@@ -167,6 +182,12 @@ func archiveOne(
 		return 0, fmt.Errorf("staging: %w", err)
 	}
 
+	finalPath, err := mw.Commit(tmpPath)
+	if err != nil {
+		_ = mw.Discard(tmpPath)
+		return 0, fmt.Errorf("committing maildir file: %w", err)
+	}
+
 	email := &domain.Email{
 		MessageID:       messageID,
 		AccountID:       accountID,
@@ -181,7 +202,7 @@ func archiveOne(
 		HasAttachments:  len(attachments) > 0,
 		Flags:           msg.Flags,
 		StorageLocation: "local",
-		LocalPath:       mw.FinalPath(tmpPath),
+		LocalPath:       finalPath,
 	}
 
 	err = w.Do(ctx, func(tx *sql.Tx) error {
@@ -203,17 +224,11 @@ func archiveOne(
 		return foldersRepo.UpdateLastUID(ctx, tx, folder.ID, msg.Uid)
 	})
 	if err != nil {
-		_ = mw.Discard(tmpPath)
-		return 0, fmt.Errorf("persisting: %w", err)
-	}
-
-	if _, err := mw.Commit(tmpPath); err != nil {
-		// SQLite already committed at this point — the emails row now
-		// references a path that doesn't exist in new/ yet. Rare (a same-
-		// filesystem rename failing right after a successful write is an
-		// edge case, not a routine one) but surfaced as an error rather
-		// than swallowed, since it needs an operator's attention.
-		return 0, fmt.Errorf("committing maildir file (SQLite already committed for UID %d): %w", msg.Uid, err)
+		// The file is already committed into new/ at this point — it's now
+		// an orphan (see the doc comment above for why that's the accepted
+		// tradeoff), not a dangling DB reference. Nothing to roll back on
+		// the filesystem side; the next sync retries this UID from scratch.
+		return 0, fmt.Errorf("persisting (file already archived to %s but not yet indexed — will be retried and re-archived under a new name): %w", finalPath, err)
 	}
 	return int64(len(raw)), nil
 }
