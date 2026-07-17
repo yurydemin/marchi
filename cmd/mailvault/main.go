@@ -26,6 +26,9 @@ func newRootCmd() *cobra.Command {
 		Version:       version.String(),
 	}
 	root.SetVersionTemplate("mailvault {{.Version}}\n")
+	root.PersistentFlags().String("config", "./config.yaml", "path to config.yaml (missing file is not an error)")
+
+	root.AddCommand(newConfigCmd())
 
 	return root
 }
