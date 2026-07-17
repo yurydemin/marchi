@@ -22,6 +22,14 @@ type FolderResult struct {
 // maildirRoot (config.yaml's storage.maildir_path). host names the Maildir
 // filename's hostname component (see maildir.NewWriter).
 //
+// The whole run is wrapped in a sync_logs row (FR-SE-06/07): Start is
+// called before anything else, and Finish always runs via defer — even if
+// connecting fails outright — so every invocation leaves a record, not just
+// the ones that got far enough to touch a folder. A failure to write the
+// log itself is logged nowhere further up and never masks the real sync
+// result; it's a best-effort record, not a dependency the sync's success
+// hinges on.
+//
 // A folder-level fetch error stops that folder (see FetchNewMessages'
 // own doc comment on why) but does not abort the remaining folders — one
 // folder having trouble shouldn't block archiving the rest of the account.
@@ -36,7 +44,32 @@ func SyncAccount(
 	foldersRepo *repo.FoldersRepo,
 	emailsRepo *repo.EmailsRepo,
 	attachmentsRepo *repo.AttachmentsRepo,
+	syncLogsRepo *repo.SyncLogsRepo,
 ) ([]FolderResult, error) {
+	logID, logErr := syncLogsRepo.Start(ctx, a.ID)
+
+	var total FetchStats
+	var syncErr error
+	defer func() {
+		if logErr != nil {
+			return // Start itself failed — nothing to Finish
+		}
+		status := domain.SyncLogCompleted
+		errMsg := ""
+		if syncErr != nil {
+			status = domain.SyncLogFailed
+			errMsg = syncErr.Error()
+		}
+		_ = syncLogsRepo.Finish(ctx, logID, &domain.SyncLog{
+			EmailsProcessed: total.Processed,
+			EmailsArchived:  total.Archived,
+			BytesDownloaded: total.Bytes,
+			Errors:          total.Errors,
+			Status:          status,
+			ErrorMsg:        errMsg,
+		})
+	}()
+
 	c, err := imapclient.Connect(ctx, imapclient.ConnectOptions{
 		Host:     a.IMAPHost,
 		Port:     a.IMAPPort,
@@ -45,12 +78,14 @@ func SyncAccount(
 		Password: password,
 	})
 	if err != nil {
+		syncErr = err
 		return nil, err
 	}
 	defer c.Logout()
 
 	folders, err := SyncFolders(ctx, c, a.ID, foldersRepo)
 	if err != nil {
+		syncErr = err
 		return nil, err
 	}
 
@@ -71,11 +106,16 @@ func SyncAccount(
 		}
 		mw := maildir.NewWriter(layout, host)
 
-		fetched, fetchErr := FetchNewMessages(ctx, c, a.ID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo)
-		results = append(results, FolderResult{Folder: folder, Fetched: fetched})
+		stats, fetchErr := FetchNewMessages(ctx, c, a.ID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo)
+		total.Processed += stats.Processed
+		total.Archived += stats.Archived
+		total.Bytes += stats.Bytes
+		total.Errors += stats.Errors
+		results = append(results, FolderResult{Folder: folder, Fetched: stats.Archived})
 		if fetchErr != nil {
 			firstErr = fmt.Errorf("sync: fetching %q: %w", folder.FolderName, fetchErr)
 		}
 	}
+	syncErr = firstErr
 	return results, firstErr
 }

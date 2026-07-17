@@ -29,6 +29,18 @@ var imapToMaildirFlag = map[string]byte{
 	imap.DraftFlag:    'D',
 }
 
+// FetchStats summarizes one folder's fetch pass, for sync_logs aggregation
+// (FR-SE-06/07). Processed counts every message actually attempted
+// (Archived successes + Errors failures) — messages drained from the
+// channel without being touched, after the first failure, don't count as
+// processed since they were never examined at all.
+type FetchStats struct {
+	Processed int
+	Archived  int
+	Bytes     int64
+	Errors    int
+}
+
 // FetchNewMessages selects folder on c (read-only — this is an archiver,
 // never a source of mutations back to the account it's archiving) and
 // fetches every message with UID greater than folder.LastUID (FR-SE-01).
@@ -52,24 +64,24 @@ func FetchNewMessages(
 	emailsRepo *repo.EmailsRepo,
 	foldersRepo *repo.FoldersRepo,
 	attachmentsRepo *repo.AttachmentsRepo,
-) (fetched int, err error) {
+) (stats FetchStats, err error) {
 	if !folder.SyncEnabled {
-		return 0, nil
+		return FetchStats{}, nil
 	}
 
 	rawName, err := imapclient.EncodeFolderName(folder.FolderName)
 	if err != nil {
-		return 0, err
+		return FetchStats{}, err
 	}
 
 	status, err := c.Select(rawName, true)
 	if err != nil {
-		return 0, fmt.Errorf("sync: SELECT %q: %w", folder.FolderName, err)
+		return FetchStats{}, fmt.Errorf("sync: SELECT %q: %w", folder.FolderName, err)
 	}
 
 	startUID := uint64(folder.LastUID) + 1
 	if startUID >= uint64(status.UidNext) {
-		return 0, nil // nothing new
+		return FetchStats{}, nil // nothing new
 	}
 
 	seqset := new(imap.SeqSet)
@@ -87,17 +99,21 @@ func FetchNewMessages(
 		if firstErr != nil {
 			continue // drain the rest without processing, preserving UID order
 		}
-		if archErr := archiveOne(ctx, msg, section, accountID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo); archErr != nil {
+		stats.Processed++
+		archivedBytes, archErr := archiveOne(ctx, msg, section, accountID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo)
+		if archErr != nil {
+			stats.Errors++
 			firstErr = fmt.Errorf("sync: archiving UID %d in %q: %w", msg.Uid, folder.FolderName, archErr)
 			continue
 		}
 		folder.LastUID = msg.Uid // keep the in-memory Folder in sync with what was just committed to the DB
-		fetched++
+		stats.Archived++
+		stats.Bytes += archivedBytes
 	}
 	if fetchErr := <-done; fetchErr != nil && firstErr == nil {
 		firstErr = fmt.Errorf("sync: UID FETCH in %q: %w", folder.FolderName, fetchErr)
 	}
-	return fetched, firstErr
+	return stats, firstErr
 }
 
 // archiveOne implements NFR-RL-03's atomicity contract for a single
@@ -116,14 +132,14 @@ func archiveOne(
 	emailsRepo *repo.EmailsRepo,
 	foldersRepo *repo.FoldersRepo,
 	attachmentsRepo *repo.AttachmentsRepo,
-) error {
+) (bytesArchived int64, err error) {
 	body := msg.GetBody(section)
 	if body == nil {
-		return fmt.Errorf("server returned no body")
+		return 0, fmt.Errorf("server returned no body")
 	}
 	raw, err := io.ReadAll(body)
 	if err != nil {
-		return fmt.Errorf("reading body: %w", err)
+		return 0, fmt.Errorf("reading body: %w", err)
 	}
 
 	md := mimeparse.Parse(raw)
@@ -136,7 +152,7 @@ func archiveOne(
 	maildirFlags := toMaildirFlags(msg.Flags)
 	tmpPath, err := mw.Stage(raw, maildirFlags)
 	if err != nil {
-		return fmt.Errorf("staging: %w", err)
+		return 0, fmt.Errorf("staging: %w", err)
 	}
 
 	email := &domain.Email{
@@ -176,7 +192,7 @@ func archiveOne(
 	})
 	if err != nil {
 		_ = mw.Discard(tmpPath)
-		return fmt.Errorf("persisting: %w", err)
+		return 0, fmt.Errorf("persisting: %w", err)
 	}
 
 	if _, err := mw.Commit(tmpPath); err != nil {
@@ -185,9 +201,9 @@ func archiveOne(
 		// filesystem rename failing right after a successful write is an
 		// edge case, not a routine one) but surfaced as an error rather
 		// than swallowed, since it needs an operator's attention.
-		return fmt.Errorf("committing maildir file (SQLite already committed for UID %d): %w", msg.Uid, err)
+		return 0, fmt.Errorf("committing maildir file (SQLite already committed for UID %d): %w", msg.Uid, err)
 	}
-	return nil
+	return int64(len(raw)), nil
 }
 
 func toMaildirFlags(imapFlags []string) string {

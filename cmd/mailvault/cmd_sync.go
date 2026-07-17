@@ -61,7 +61,8 @@ func newSyncCmd() *cobra.Command {
 			foldersRepo := repo.NewFoldersRepo(sqlDB, w)
 			emailsRepo := repo.NewEmailsRepo(sqlDB, w)
 			attachmentsRepo := repo.NewAttachmentsRepo(sqlDB, w)
-			results, err := syncengine.SyncAccount(cmd.Context(), a, password, cfg.Storage.MaildirPath, host, w, foldersRepo, emailsRepo, attachmentsRepo)
+			syncLogsRepo := repo.NewSyncLogsRepo(sqlDB, w)
+			results, err := syncengine.SyncAccount(cmd.Context(), a, password, cfg.Storage.MaildirPath, host, w, foldersRepo, emailsRepo, attachmentsRepo, syncLogsRepo)
 
 			total := 0
 			for _, r := range results {

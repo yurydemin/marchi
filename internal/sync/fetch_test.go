@@ -145,12 +145,21 @@ func TestFetchNewMessages_ArchivesEverythingAboveLastUID(t *testing.T) {
 	}
 
 	mw := env.newWriter(t, "INBOX")
-	fetched, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
-	if fetched != 3 {
-		t.Fatalf("fetched = %d, want 3", fetched)
+	if stats.Archived != 3 {
+		t.Fatalf("Archived = %d, want 3", stats.Archived)
+	}
+	if stats.Processed != 3 {
+		t.Errorf("Processed = %d, want 3", stats.Processed)
+	}
+	if stats.Errors != 0 {
+		t.Errorf("Errors = %d, want 0", stats.Errors)
+	}
+	if stats.Bytes == 0 {
+		t.Error("Bytes should be non-zero (sum of archived message sizes)")
 	}
 
 	emails, err := env.emailsR.ListByFolder(context.Background(), folder.ID)
@@ -234,12 +243,12 @@ func TestFetchNewMessages_NoNewMessages_IsANoOp(t *testing.T) {
 	folder.LastUID = 3
 
 	mw := env.newWriter(t, "INBOX")
-	fetched, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
-	if fetched != 0 {
-		t.Errorf("fetched = %d, want 0 (no new messages)", fetched)
+	if stats.Archived != 0 {
+		t.Errorf("Archived = %d, want 0 (no new messages)", stats.Archived)
 	}
 }
 
@@ -258,12 +267,12 @@ func TestFetchNewMessages_SkipsWhenSyncDisabled(t *testing.T) {
 	mw := env.newWriter(t, "INBOX")
 	// Deliberately nil client: FetchNewMessages must return before ever
 	// touching it, since sync_enabled=false is checked first.
-	fetched, err := FetchNewMessages(context.Background(), nil, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
+	stats, err := FetchNewMessages(context.Background(), nil, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
-	if fetched != 0 {
-		t.Errorf("fetched = %d, want 0", fetched)
+	if stats.Archived != 0 {
+		t.Errorf("Archived = %d, want 0", stats.Archived)
 	}
 }
 
@@ -287,12 +296,12 @@ func TestFetchNewMessages_ExtractsAttachments(t *testing.T) {
 	}
 
 	mw := env.newWriter(t, "INBOX")
-	fetched, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
-	if fetched != 2 {
-		t.Fatalf("fetched = %d, want 2", fetched)
+	if stats.Archived != 2 {
+		t.Fatalf("Archived = %d, want 2", stats.Archived)
 	}
 
 	emails, err := env.emailsR.ListByFolder(context.Background(), folder.ID)

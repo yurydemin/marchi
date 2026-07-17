@@ -83,6 +83,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newListAccountsCmd())
 	root.AddCommand(newTestConnectionCmd())
 	root.AddCommand(newSyncCmd())
+	root.AddCommand(newStatusCmd())
 
 	return root
 }
