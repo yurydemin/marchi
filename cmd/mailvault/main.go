@@ -76,6 +76,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newMigrateCmd())
 	root.AddCommand(newAddAccountCmd())
 	root.AddCommand(newListAccountsCmd())
+	root.AddCommand(newTestConnectionCmd())
 
 	return root
 }
