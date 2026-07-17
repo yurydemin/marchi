@@ -154,6 +154,24 @@ func TestFlags_EmptyProducesTrailingComma(t *testing.T) {
 	}
 }
 
+func TestFinalPath_MatchesWhatCommitProduces(t *testing.T) {
+	w, _ := newTestWriter(t)
+
+	tmpPath, err := w.Stage([]byte("x"), "S")
+	if err != nil {
+		t.Fatalf("Stage: %v", err)
+	}
+	predicted := w.FinalPath(tmpPath)
+
+	actual, err := w.Commit(tmpPath)
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if predicted != actual {
+		t.Errorf("FinalPath predicted %q, Commit produced %q", predicted, actual)
+	}
+}
+
 func TestNewWriter_SanitizesHost(t *testing.T) {
 	l, err := NewLayout(t.TempDir())
 	if err != nil {

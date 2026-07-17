@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -15,7 +16,7 @@ import (
 func newSyncCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "sync <email>",
-		Short: "Sync an account's folder list — UIDVALIDITY/last_uid bookkeeping (FR-SE-01); message fetch comes in a later step",
+		Short: "Sync an account: folder list (FR-SE-01) then new messages in each folder",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			email := args[0]
@@ -52,17 +53,24 @@ func newSyncCmd() *cobra.Command {
 				return err
 			}
 
-			foldersRepo := repo.NewFoldersRepo(sqlDB, w)
-			folders, err := syncengine.SyncAccount(cmd.Context(), a, password, foldersRepo)
+			host, err := os.Hostname()
 			if err != nil {
-				return err
+				host = "localhost"
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Synced %d folder(s) for %s:\n", len(folders), email)
-			for _, f := range folders {
-				fmt.Fprintf(cmd.OutOrStdout(), "  %-30s uidvalidity=%d last_uid=%d\n", f.FolderName, f.UIDValidity, f.LastUID)
+			foldersRepo := repo.NewFoldersRepo(sqlDB, w)
+			emailsRepo := repo.NewEmailsRepo(sqlDB, w)
+			results, err := syncengine.SyncAccount(cmd.Context(), a, password, cfg.Storage.MaildirPath, host, w, foldersRepo, emailsRepo)
+
+			total := 0
+			for _, r := range results {
+				total += r.Fetched
+				fmt.Fprintf(cmd.OutOrStdout(), "  %-30s uidvalidity=%-12d last_uid=%-8d fetched=%d\n",
+					r.Folder.FolderName, r.Folder.UIDValidity, r.Folder.LastUID, r.Fetched)
 			}
-			return nil
+			fmt.Fprintf(cmd.OutOrStdout(), "Synced %s: %d folder(s), %d new message(s) archived.\n", email, len(results), total)
+
+			return err
 		},
 	}
 }

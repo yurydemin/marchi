@@ -53,6 +53,22 @@ func (r *FoldersRepo) UpsertFolder(ctx context.Context, accountID int64, folderN
 	return &f, nil
 }
 
+// UpdateLastUID advances folderID's last_uid within an existing
+// transaction — for combining with other writes (inserting the email that
+// uid refers to) into one atomic Single-Writer transaction, the pattern
+// internal/db/writer's own doc comment calls out as the reason Do takes a
+// closure instead of just running one statement.
+//
+// The "AND last_uid < ?" guard means this can never regress last_uid
+// backward — relevant if messages are ever processed out of UID order,
+// which nothing currently does, but costs nothing to guard against.
+func (r *FoldersRepo) UpdateLastUID(ctx context.Context, tx *sql.Tx, folderID int64, uid uint32) error {
+	if _, err := tx.ExecContext(ctx, `UPDATE folders SET last_uid = ? WHERE id = ? AND last_uid < ?`, uid, folderID, uid); err != nil {
+		return fmt.Errorf("repo: updating folder %d last_uid: %w", folderID, err)
+	}
+	return nil
+}
+
 // ListByAccount returns every folder recorded for accountID, alphabetically.
 func (r *FoldersRepo) ListByAccount(ctx context.Context, accountID int64) ([]*domain.Folder, error) {
 	rows, err := r.db.QueryContext(ctx, `

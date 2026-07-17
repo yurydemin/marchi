@@ -72,11 +72,20 @@ func (w *Writer) Stage(data []byte, flags string) (tmpPath string, err error) {
 	return tmpPath, nil
 }
 
+// FinalPath computes where tmpPath will land once committed, without
+// touching the filesystem. Callers that need to record a message's path
+// (e.g. emails.local_path) before the corresponding SQLite write commits —
+// which per this package's own staging order happens before the Maildir
+// Commit itself — use this instead of Commit's return value.
+func (w *Writer) FinalPath(tmpPath string) string {
+	return filepath.Join(w.layout.New, filepath.Base(tmpPath))
+}
+
 // Commit atomically moves a staged file from tmp/ into new/, keeping the
 // same filename — that uniqueness is exactly why Stage generated it up
 // front rather than leaving naming to Commit time.
 func (w *Writer) Commit(tmpPath string) (finalPath string, err error) {
-	finalPath = filepath.Join(w.layout.New, filepath.Base(tmpPath))
+	finalPath = w.FinalPath(tmpPath)
 	if err := os.Rename(tmpPath, finalPath); err != nil {
 		return "", fmt.Errorf("maildir: committing %s: %w", tmpPath, err)
 	}

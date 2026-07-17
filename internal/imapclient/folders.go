@@ -46,3 +46,16 @@ func ListFolders(c *client.Client) ([]Folder, error) {
 	}
 	return folders, nil
 }
+
+// EncodeFolderName re-encodes a decoded (UTF-8) folder name back into
+// modified UTF-7 for use in IMAP commands (SELECT, STATUS, ...). FR-ST-03's
+// folders.folder_name column stores only the decoded form, so anything
+// operating on a stored Folder needs this round trip back to wire format —
+// there's no raw name persisted anywhere to reuse instead.
+func EncodeFolderName(name string) (string, error) {
+	encoded, err := utf7.Encoding.NewEncoder().String(name)
+	if err != nil {
+		return "", fmt.Errorf("imapclient: encoding folder name %q: %w", name, err)
+	}
+	return encoded, nil
+}
