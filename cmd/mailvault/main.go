@@ -10,6 +10,7 @@ import (
 
 	"github.com/yurydemin/marchi/internal/config"
 	"github.com/yurydemin/marchi/internal/logging"
+	"github.com/yurydemin/marchi/internal/maildir"
 	"github.com/yurydemin/marchi/internal/version"
 )
 
@@ -51,6 +52,10 @@ func newRootCmd() *cobra.Command {
 				return fmt.Errorf("initializing logging: %w", err)
 			}
 			closeLogging = closeFn
+
+			if err := maildir.SweepAll(cfg.Storage.MaildirPath); err != nil {
+				logger.Warn("maildir tmp/ sweep failed", zap.Error(err))
+			}
 
 			ctx := withConfig(cmd.Context(), cfg)
 			ctx = withLogger(ctx, logger)
