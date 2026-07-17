@@ -78,16 +78,16 @@ type CacheConfig struct {
 }
 
 type S3Config struct {
-	Enabled             bool               `yaml:"enabled"`
-	Endpoint            string             `yaml:"endpoint"`
-	Region              string             `yaml:"region"`
-	Bucket              string             `yaml:"bucket"`
-	AccessKeyEncrypted  string             `yaml:"access_key_encrypted"`
-	SecretKeyEncrypted  string             `yaml:"secret_key_encrypted"`
-	PathStyle           bool               `yaml:"path_style"`
-	StorageClass        string             `yaml:"storage_class"`
-	Encryption          S3EncryptionConfig `yaml:"encryption"`
-	UploadWorkers       int                `yaml:"upload_workers"`
+	Enabled            bool               `yaml:"enabled"`
+	Endpoint           string             `yaml:"endpoint"`
+	Region             string             `yaml:"region"`
+	Bucket             string             `yaml:"bucket"`
+	AccessKeyEncrypted string             `yaml:"access_key_encrypted"`
+	SecretKeyEncrypted string             `yaml:"secret_key_encrypted"`
+	PathStyle          bool               `yaml:"path_style"`
+	StorageClass       string             `yaml:"storage_class"`
+	Encryption         S3EncryptionConfig `yaml:"encryption"`
+	UploadWorkers      int                `yaml:"upload_workers"`
 }
 
 type S3EncryptionConfig struct {

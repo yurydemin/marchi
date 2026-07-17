@@ -72,6 +72,7 @@ func newRootCmd() *cobra.Command {
 	root.PersistentFlags().String("config", "./config.yaml", "path to config.yaml (missing file is not an error)")
 
 	root.AddCommand(newConfigCmd())
+	root.AddCommand(newUnlockCmd())
 
 	return root
 }

@@ -8,12 +8,13 @@
 # Go
 /vendor/
 
-# Runtime data (Maildir, SQLite, Bluge index, cache, logs, Master Key salt)
+# Runtime data (Maildir, SQLite, Bluge index, cache, logs, Master Key salt/verifier)
 /data/
 *.db
 *.db-wal
 *.db-shm
 .salt
+.mk-verify
 
 # Local config overrides
 config.local.yaml
