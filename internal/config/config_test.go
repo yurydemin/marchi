@@ -63,6 +63,86 @@ sync:
 	}
 }
 
+// TestLoad_CustomDataDirDerivesAllPaths guards against a real regression:
+// Load used to build cfg from Defaults("./data") and only apply the
+// YAML's app.data_dir on top, leaving Database.SQLite.Path/
+// Search.IndexPath/Storage.MaildirPath/Storage.Cache.Path pinned to
+// ./data-relative paths whenever a config.yaml set data_dir without also
+// explicitly overriding those four — exactly the documented zero-config
+// pattern (just set data_dir, everything else derives from it).
+func TestLoad_CustomDataDirDerivesAllPaths(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("app:\n  data_dir: \"/custom/data\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if want := filepath.Join("/custom/data", "mailvault.db"); cfg.Database.SQLite.Path != want {
+		t.Errorf("SQLite path = %q, want %q", cfg.Database.SQLite.Path, want)
+	}
+	if want := filepath.Join("/custom/data", "index"); cfg.Search.IndexPath != want {
+		t.Errorf("IndexPath = %q, want %q", cfg.Search.IndexPath, want)
+	}
+	if want := filepath.Join("/custom/data", "maildir"); cfg.Storage.MaildirPath != want {
+		t.Errorf("MaildirPath = %q, want %q", cfg.Storage.MaildirPath, want)
+	}
+	if want := filepath.Join("/custom/data", "cache"); cfg.Storage.Cache.Path != want {
+		t.Errorf("Cache.Path = %q, want %q", cfg.Storage.Cache.Path, want)
+	}
+}
+
+// TestLoad_DataDirEnvOverrideDerivesAllPaths is the MAILVAULT_DATA_DIR
+// analog of TestLoad_CustomDataDirDerivesAllPaths.
+func TestLoad_DataDirEnvOverrideDerivesAllPaths(t *testing.T) {
+	t.Setenv("MAILVAULT_DATA_DIR", "/from/env")
+
+	cfg, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if want := filepath.Join("/from/env", "mailvault.db"); cfg.Database.SQLite.Path != want {
+		t.Errorf("SQLite path = %q, want %q", cfg.Database.SQLite.Path, want)
+	}
+	if want := filepath.Join("/from/env", "index"); cfg.Search.IndexPath != want {
+		t.Errorf("IndexPath = %q, want %q", cfg.Search.IndexPath, want)
+	}
+}
+
+// TestLoad_ExplicitPathsSurviveCustomDataDir confirms the fix doesn't
+// clobber a config.yaml that DOES explicitly set one of the derived
+// paths to somewhere other than under data_dir — an explicit override
+// must still win.
+func TestLoad_ExplicitPathsSurviveCustomDataDir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	yamlContent := `
+app:
+  data_dir: "/custom/data"
+database:
+  sqlite:
+    path: "/elsewhere/db.sqlite"
+`
+	if err := os.WriteFile(path, []byte(yamlContent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Database.SQLite.Path != "/elsewhere/db.sqlite" {
+		t.Errorf("SQLite path = %q, want explicit override /elsewhere/db.sqlite", cfg.Database.SQLite.Path)
+	}
+	// Untouched by the explicit override, still derived from data_dir.
+	if want := filepath.Join("/custom/data", "index"); cfg.Search.IndexPath != want {
+		t.Errorf("IndexPath = %q, want %q", cfg.Search.IndexPath, want)
+	}
+}
+
 func TestLoad_EnvOverridesYAML(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")

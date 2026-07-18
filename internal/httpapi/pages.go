@@ -30,15 +30,9 @@ type pageData struct {
 func registerPages(app *fiber.App, vault *vaultState, store *session.Store, pages map[string]*template.Template) {
 	app.Get("/", func(c *fiber.Ctx) error {
 		c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
-		if !sessionUnlocked(c, store) {
-			return pages["index"].ExecuteTemplate(c, "layout", pageData{Unlocked: false})
-		}
-
-		b := vault.currentBackend()
-		if b == nil {
-			// Shouldn't happen: sessionUnlocked implies a prior POST
-			// /unlock already built the backend via vault.unlock().
-			return pages["index"].ExecuteTemplate(c, "layout", pageData{Unlocked: false})
+		b, ok := pageBackend(c, vault, store)
+		if !ok {
+			return renderLocked(c, pages)
 		}
 		stats, err := computeStats(c.Context(), b)
 		if err != nil {
@@ -46,4 +40,42 @@ func registerPages(app *fiber.App, vault *vaultState, store *session.Store, page
 		}
 		return pages["index"].ExecuteTemplate(c, "layout", pageData{Unlocked: true, Stats: stats})
 	})
+}
+
+// renderLocked renders the shared unlock screen ("index" page's locked
+// branch) for any full-page GET whose session isn't authenticated —
+// browser navigation should land on something a user can act on, not a
+// bare error.
+func renderLocked(c *fiber.Ctx, pages map[string]*template.Template) error {
+	c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
+	return pages["index"].ExecuteTemplate(c, "layout", pageData{Unlocked: false})
+}
+
+// pageBackend is the full-page-GET counterpart of requireUnlockedSession:
+// same two checks (session authenticated, backend built), but reports
+// failure via a bool instead of an error, since callers render a locked
+// page rather than propagate a JSON-shaped error.
+func pageBackend(c *fiber.Ctx, vault *vaultState, store *session.Store) (*backend, bool) {
+	if !sessionUnlocked(c, store) {
+		return nil, false
+	}
+	b := vault.currentBackend()
+	// b == nil shouldn't happen: sessionUnlocked implies a prior POST
+	// /unlock already built the backend via vault.unlock().
+	return b, b != nil
+}
+
+// requireUnlockedSession is the HTMX-fragment counterpart of
+// currentBackendOrLocked. Fragment routes (accounts_ui.go's htmx-driven
+// create/edit/delete/toggle/test endpoints) sit outside newLockGate's
+// scope — that gate only covers /api/v1 and /ws (see its doc comment) —
+// so each of them must check the browser's own session itself. Without
+// this, an unauthenticated request could mutate a vault some other
+// session (or MAILVAULT_MASTER_KEY) already unlocked, defeating the
+// per-browser-session auth model entirely.
+func requireUnlockedSession(c *fiber.Ctx, vault *vaultState, store *session.Store) (*backend, error) {
+	if !sessionUnlocked(c, store) {
+		return nil, fiber.NewError(fiber.StatusUnauthorized, "vault is locked")
+	}
+	return currentBackendOrLocked(vault)
 }

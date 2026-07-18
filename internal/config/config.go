@@ -186,20 +186,49 @@ var envOverrides = []struct {
 
 // Load reads config.yaml at path (if present — its absence is not an error,
 // zero-config just runs on defaults), then applies env var overrides on top.
+//
+// data_dir is resolved in a first pass (YAML, then MAILVAULT_DATA_DIR)
+// before Defaults is called, so Database.SQLite.Path/Search.IndexPath/
+// Storage.MaildirPath/Storage.Cache.Path — all derived from dataDir —
+// come out rooted at the user's chosen directory even when the config
+// only sets app.data_dir and leaves those four unspecified. Building cfg
+// from Defaults("./data") and unmarshaling data_dir on top afterward (the
+// previous approach) left those four permanently pointing at ./data
+// regardless of data_dir, since nothing ever re-derived them.
 func Load(path string) (*Config, error) {
-	cfg := Defaults("./data")
+	dataDir := "./data"
+	var fileBytes []byte
 
 	if path != "" {
 		data, err := os.ReadFile(path)
 		switch {
 		case err == nil:
-			if err := yaml.Unmarshal(data, cfg); err != nil {
+			fileBytes = data
+			var probe struct {
+				App struct {
+					DataDir string `yaml:"data_dir"`
+				} `yaml:"app"`
+			}
+			if err := yaml.Unmarshal(data, &probe); err != nil {
 				return nil, fmt.Errorf("parsing %s: %w", path, err)
+			}
+			if probe.App.DataDir != "" {
+				dataDir = probe.App.DataDir
 			}
 		case os.IsNotExist(err):
 			// zero-config: no file, defaults stand.
 		default:
 			return nil, fmt.Errorf("reading %s: %w", path, err)
+		}
+	}
+	if v, ok := os.LookupEnv("MAILVAULT_DATA_DIR"); ok {
+		dataDir = v
+	}
+
+	cfg := Defaults(dataDir)
+	if fileBytes != nil {
+		if err := yaml.Unmarshal(fileBytes, cfg); err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", path, err)
 		}
 	}
 

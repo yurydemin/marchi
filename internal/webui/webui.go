@@ -20,7 +20,8 @@ import (
 // two page files were parsed into the same template set, the second
 // definition would silently win for both.
 var pageFiles = map[string]string{
-	"index": "templates/index.html",
+	"index":    "templates/index.html",
+	"accounts": "templates/accounts.html",
 }
 
 // Parse compiles every registered page once. Called at server startup

@@ -14,7 +14,11 @@
     <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
       <span class="text-lg font-semibold">MailVault</span>
       {{if .Unlocked}}
-      <nav class="text-sm text-slate-500">Accounts &amp; Archive views coming soon</nav>
+      <nav class="flex items-center gap-4 text-sm">
+        <a class="text-slate-600 hover:text-slate-900" href="/">Dashboard</a>
+        <a class="text-slate-600 hover:text-slate-900" href="/accounts">Accounts</a>
+        <span class="text-slate-400">Archive view coming soon</span>
+      </nav>
       {{end}}
     </div>
   </header>

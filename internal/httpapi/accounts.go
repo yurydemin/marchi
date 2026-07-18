@@ -73,13 +73,13 @@ func handleListAccounts(vault *vaultState) fiber.Handler {
 }
 
 type createAccountRequest struct {
-	Email        string `json:"email"`
-	DisplayName  string `json:"display_name"`
-	IMAPHost     string `json:"imap_host"`
-	IMAPPort     int    `json:"imap_port"`
-	IMAPTLS      string `json:"imap_tls"`
-	IMAPUsername string `json:"imap_username"`
-	IMAPPassword string `json:"imap_password"`
+	Email        string `json:"email" form:"email"`
+	DisplayName  string `json:"display_name" form:"display_name"`
+	IMAPHost     string `json:"imap_host" form:"imap_host"`
+	IMAPPort     int    `json:"imap_port" form:"imap_port"`
+	IMAPTLS      string `json:"imap_tls" form:"imap_tls"`
+	IMAPUsername string `json:"imap_username" form:"imap_username"`
+	IMAPPassword string `json:"imap_password" form:"imap_password"`
 }
 
 func handleCreateAccount(vault *vaultState) fiber.Handler {
@@ -113,14 +113,14 @@ func handleCreateAccount(vault *vaultState) fiber.Handler {
 }
 
 type updateAccountRequest struct {
-	DisplayName  string `json:"display_name"`
-	IMAPHost     string `json:"imap_host"`
-	IMAPPort     int    `json:"imap_port"`
-	IMAPTLS      string `json:"imap_tls"`
-	IMAPUsername string `json:"imap_username"`
-	IMAPPassword string `json:"imap_password"` // "" keeps the existing password
-	IsActive     *bool  `json:"is_active"`     // omitted keeps the existing value
-	SyncCron     string `json:"sync_cron"`
+	DisplayName  string `json:"display_name" form:"display_name"`
+	IMAPHost     string `json:"imap_host" form:"imap_host"`
+	IMAPPort     int    `json:"imap_port" form:"imap_port"`
+	IMAPTLS      string `json:"imap_tls" form:"imap_tls"`
+	IMAPUsername string `json:"imap_username" form:"imap_username"`
+	IMAPPassword string `json:"imap_password" form:"imap_password"` // "" keeps the existing password
+	IsActive     *bool  `json:"is_active"`                          // omitted keeps the existing value; not form-tagged, see accounts_ui.go's handleAccountToggle for why the Web UI never submits this via a form field
+	SyncCron     string `json:"sync_cron" form:"sync_cron"`
 }
 
 func handleUpdateAccount(vault *vaultState) fiber.Handler {
