@@ -77,17 +77,19 @@ type CacheConfig struct {
 	Path      string `yaml:"path"`
 }
 
+// S3Config is deliberately just operational tuning, not connection
+// details: endpoint/region/bucket/credentials are per-deployment secrets
+// edited live through the Settings UI/API (FR-WU-02, Phase 3 step 9) and
+// therefore live in the s3_config DB table (domain.S3Settings), encrypted
+// under the Master Key like every other credential in this app — not in
+// this plaintext, restart-only config file. Rewriting config.yaml from a
+// running API handler was considered and rejected: gopkg.in/yaml.v3
+// doesn't preserve comments/formatting on marshal, so every API-driven
+// edit would silently reformat (or outright clobber) whatever the user
+// originally wrote.
 type S3Config struct {
-	Enabled            bool               `yaml:"enabled"`
-	Endpoint           string             `yaml:"endpoint"`
-	Region             string             `yaml:"region"`
-	Bucket             string             `yaml:"bucket"`
-	AccessKeyEncrypted string             `yaml:"access_key_encrypted"`
-	SecretKeyEncrypted string             `yaml:"secret_key_encrypted"`
-	PathStyle          bool               `yaml:"path_style"`
-	StorageClass       string             `yaml:"storage_class"`
-	Encryption         S3EncryptionConfig `yaml:"encryption"`
-	UploadWorkers      int                `yaml:"upload_workers"`
+	Encryption    S3EncryptionConfig `yaml:"encryption"`
+	UploadWorkers int                `yaml:"upload_workers"`
 }
 
 type S3EncryptionConfig struct {
@@ -144,9 +146,6 @@ func Defaults(dataDir string) *Config {
 			},
 		},
 		S3: S3Config{
-			Enabled:      false,
-			PathStyle:    false,
-			StorageClass: "STANDARD",
 			Encryption: S3EncryptionConfig{
 				Enabled:   true,
 				Algorithm: "AES-256-GCM",
