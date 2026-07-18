@@ -38,6 +38,7 @@ type backend struct {
 	emailsRepo      *repo.EmailsRepo
 	attachmentsRepo *repo.AttachmentsRepo
 	syncLogsRepo    *repo.SyncLogsRepo
+	rulesRepo       *repo.RulesRepo
 	manager         *account.Manager
 
 	// indexMu guards index itself (not the index's own internal state):
@@ -103,6 +104,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 		emailsRepo:      repo.NewEmailsRepo(sqlDB, w),
 		attachmentsRepo: repo.NewAttachmentsRepo(sqlDB, w),
 		syncLogsRepo:    repo.NewSyncLogsRepo(sqlDB, w),
+		rulesRepo:       repo.NewRulesRepo(sqlDB, w),
 		manager:         mgr,
 		index:           idx,
 	}
@@ -113,6 +115,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 		EmailsRepo:      b.emailsRepo,
 		AttachmentsRepo: b.attachmentsRepo,
 		SyncLogsRepo:    b.syncLogsRepo,
+		RulesRepo:       b.rulesRepo,
 		Manager:         b.manager,
 		Writer:          b.w,
 		Host:            host,

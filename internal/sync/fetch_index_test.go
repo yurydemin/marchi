@@ -71,7 +71,7 @@ func TestFetchNewMessages_IndexesArchivedMessages(t *testing.T) {
 	}
 	mw := env.newWriter(t, "INBOX")
 
-	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, idx, nil)
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, idx, nil, nil)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestFetchNewMessages_NilIndex_SkipsIndexingWithoutError(t *testing.T) {
 	}
 	mw := env.newWriter(t, "INBOX")
 
-	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, nil)
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestFetchNewMessages_IndexWriteFails_ArchivalStillSucceeds(t *testing.T) {
 	}
 	mw := env.newWriter(t, "INBOX")
 
-	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, idx, nil)
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, idx, nil, nil)
 	if err != nil {
 		t.Fatalf("FetchNewMessages returned an error: %v (archival must succeed even though indexing fails)", err)
 	}

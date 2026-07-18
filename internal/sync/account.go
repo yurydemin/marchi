@@ -66,6 +66,7 @@ func SyncAccount(
 	emailsRepo *repo.EmailsRepo,
 	attachmentsRepo *repo.AttachmentsRepo,
 	syncLogsRepo *repo.SyncLogsRepo,
+	rulesRepo *repo.RulesRepo, // nil skips Rule Engine dispatch entirely — every message defaults to archive (FR-RE-03)
 	idx *search.Index, // nil skips search indexing entirely — see FetchNewMessages/archiveOne
 	onProgress ProgressFunc, // nil skips progress reporting entirely (FR-SE-07)
 ) ([]FolderResult, error) {
@@ -99,6 +100,7 @@ func SyncAccount(
 		_ = syncLogsRepo.Finish(finishCtx, logID, &domain.SyncLog{
 			EmailsProcessed: total.Processed,
 			EmailsArchived:  total.Archived,
+			EmailsSkipped:   total.Skipped,
 			BytesDownloaded: total.Bytes,
 			Errors:          total.Errors,
 			Status:          status,
@@ -123,6 +125,17 @@ func SyncAccount(
 	if err != nil {
 		syncErr = err
 		return nil, err
+	}
+
+	// Loaded once per account sync, not per folder — every folder's
+	// FetchNewMessages call evaluates against the same rule set.
+	var activeRules []*domain.Rule
+	if rulesRepo != nil {
+		activeRules, err = rulesRepo.ListActive(ctx)
+		if err != nil {
+			syncErr = fmt.Errorf("sync: loading active rules: %w", err)
+			return nil, syncErr
+		}
 	}
 
 	results := make([]FolderResult, 0, len(folders))
@@ -151,11 +164,16 @@ func SyncAccount(
 		}
 		mw := maildir.NewWriter(layout, host)
 
-		stats, fetchErr := FetchNewMessages(ctx, c, a.ID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx, onProgress)
+		stats, fetchErr := FetchNewMessages(ctx, c, a.ID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx, activeRules, onProgress)
 		total.Processed += stats.Processed
 		total.Archived += stats.Archived
+		total.Skipped += stats.Skipped
 		total.Bytes += stats.Bytes
-		total.Errors += stats.Errors
+		// RuleActionErrors folds into the same visible Errors count sync_logs
+		// already surfaces — both mean "something needs a look", even though
+		// only the archival kind (not a post-archive STORE/EXPUNGE failure)
+		// ever sets firstErr/syncErr.
+		total.Errors += stats.Errors + stats.RuleActionErrors
 		total.IndexErrors += stats.IndexErrors
 		results = append(results, FolderResult{Folder: folder, Fetched: stats.Archived})
 		if fetchErr != nil {

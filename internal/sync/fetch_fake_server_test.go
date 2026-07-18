@@ -74,9 +74,12 @@ func serveFakeFetchConn(conn net.Conn, s fakeFetchServer) {
 			w.Flush()
 
 		case strings.Contains(upper, " SELECT ") || strings.Contains(upper, " EXAMINE "):
-			// FetchNewMessages selects read-only, which go-imap sends as
-			// EXAMINE rather than SELECT (RFC 3501 §6.3.2) — same response
-			// shape either way for this fake server's purposes.
+			// FetchNewMessages selects read-write since Phase 3 step 2
+			// (archive_and_delete/archive_and_mark_read need STORE/EXPUNGE),
+			// but this fake server treats both commands identically — none
+			// of its tests exercise those two actions against it (see
+			// fetch_rules_test.go's doc comment: that's covered live
+			// against real Dovecot instead).
 			fmt.Fprintf(w, "* %d EXISTS\r\n", len(s.messages))
 			fmt.Fprint(w, "* 0 RECENT\r\n")
 			fmt.Fprint(w, "* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n")

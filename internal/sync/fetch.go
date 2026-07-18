@@ -15,6 +15,7 @@ import (
 	"github.com/yurydemin/marchi/internal/imapclient"
 	"github.com/yurydemin/marchi/internal/maildir"
 	"github.com/yurydemin/marchi/internal/mimeparse"
+	"github.com/yurydemin/marchi/internal/rules"
 	"github.com/yurydemin/marchi/internal/search"
 )
 
@@ -32,26 +33,46 @@ var imapToMaildirFlag = map[string]byte{
 
 // FetchStats summarizes one folder's fetch pass, for sync_logs aggregation
 // (FR-SE-06/07). Processed counts every message actually attempted
-// (Archived successes + Errors failures) — messages drained from the
-// channel without being touched, after the first failure, don't count as
-// processed since they were never examined at all.
+// (Archived successes + Skipped + Errors failures) — messages drained from
+// the channel without being touched, after the first failure, don't count
+// as processed since they were never examined at all.
 type FetchStats struct {
 	Processed int
 	Archived  int
-	Bytes     int64
-	Errors    int
+	// Skipped counts messages a rule's "skip" action kept out of the
+	// archive entirely (FR-RE-03) — last_uid still advances past them
+	// (see skipOne), so they're not reprocessed on the next sync.
+	Skipped int
+	Bytes   int64
+	Errors  int
 	// IndexErrors counts search-index (Bluge) write failures — best-effort
 	// (see archiveOne's doc comment): the email is still fully archived
 	// and this never contributes to Errors or stops the sync. A reindex
 	// (FR-SR-04) is the recovery path if this is ever nonzero.
 	IndexErrors int
+	// RuleActionErrors counts archive_and_delete/archive_and_mark_read
+	// IMAP side effects (STORE/EXPUNGE on the source server) that failed
+	// after the message was already successfully archived. Best-effort,
+	// same reasoning as IndexErrors: the archive copy is the thing that
+	// must not be lost, so a failure here is logged and counted, not
+	// treated as fatal — the source message just keeps whatever flag it
+	// already had.
+	RuleActionErrors int
 }
 
-// FetchNewMessages selects folder on c (read-only — this is an archiver,
-// never a source of mutations back to the account it's archiving) and
-// fetches every message with UID greater than folder.LastUID (FR-SE-01).
-// Rule Engine dispatch (FR-RE-*) isn't wired in yet — every message is
-// archived unconditionally, matching this step's stated scope.
+// FetchNewMessages selects folder on c and fetches every message with UID
+// greater than folder.LastUID (FR-SE-01). The mailbox is opened
+// read-write (not EXAMINE) so archive_and_delete/archive_and_mark_read
+// actions can issue STORE/EXPUNGE — fetching itself still can't mark a
+// message \Seen as a side effect regardless of that mode, since every
+// FETCH here uses BODY.PEEK[].
+//
+// activeRules (FR-RE-01..03), pre-loaded and sorted by priority by the
+// caller (see repo.RulesRepo.ListActive), is evaluated against each
+// message's parsed metadata before it's archived. The first matching
+// rule's Action decides what happens; no match (including a nil/empty
+// activeRules) defaults to archive — the same unconditional behavior
+// Phase 1/2 always had.
 //
 // Messages are processed in the order the server returns them (ascending
 // UID for any well-behaved server) and stop at the first failure rather
@@ -71,6 +92,7 @@ func FetchNewMessages(
 	foldersRepo *repo.FoldersRepo,
 	attachmentsRepo *repo.AttachmentsRepo,
 	idx *search.Index, // nil skips indexing entirely — see archiveOne
+	activeRules []*domain.Rule, // nil/empty: every message defaults to archive (FR-RE-03)
 	onProgress ProgressFunc, // nil skips progress reporting entirely (FR-SE-07)
 ) (stats FetchStats, err error) {
 	if !folder.SyncEnabled {
@@ -85,7 +107,7 @@ func FetchNewMessages(
 		return FetchStats{}, err
 	}
 
-	status, err := c.Select(rawName, true)
+	status, err := c.Select(rawName, false)
 	if err != nil {
 		return FetchStats{}, fmt.Errorf("sync: SELECT %q: %w", folder.FolderName, err)
 	}
@@ -125,7 +147,43 @@ func FetchNewMessages(
 			continue
 		}
 		stats.Processed++
-		archivedBytes, indexErr, archErr := archiveOne(ctx, msg, section, accountID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx)
+
+		raw, md, attachments, parseErr := parseMessage(msg, section)
+		if parseErr != nil {
+			stats.Errors++
+			firstErr = fmt.Errorf("sync: reading UID %d in %q: %w", msg.Uid, folder.FolderName, parseErr)
+			onProgress.report(Progress{
+				AccountID: accountID, FolderName: folder.FolderName, CurrentUID: msg.Uid,
+				Total: estimatedTotal, Processed: stats.Processed, Archived: stats.Archived, Errors: stats.Errors,
+			})
+			continue
+		}
+
+		action := domain.ActionArchive
+		if matched := rules.FirstMatch(activeRules, candidateFrom(md, attachments, raw, folder.FolderName, accountID)); matched != nil {
+			action = matched.Action
+		}
+
+		if action == domain.ActionSkip {
+			if skipErr := skipOne(ctx, w, foldersRepo, folder.ID, msg.Uid); skipErr != nil {
+				stats.Errors++
+				firstErr = fmt.Errorf("sync: skipping UID %d in %q: %w", msg.Uid, folder.FolderName, skipErr)
+				onProgress.report(Progress{
+					AccountID: accountID, FolderName: folder.FolderName, CurrentUID: msg.Uid,
+					Total: estimatedTotal, Processed: stats.Processed, Archived: stats.Archived, Errors: stats.Errors,
+				})
+				continue
+			}
+			folder.LastUID = msg.Uid
+			stats.Skipped++
+			onProgress.report(Progress{
+				AccountID: accountID, FolderName: folder.FolderName, CurrentUID: msg.Uid,
+				Total: estimatedTotal, Processed: stats.Processed, Archived: stats.Archived, Errors: stats.Errors,
+			})
+			continue
+		}
+
+		archivedBytes, indexErr, archErr := archiveOne(ctx, raw, md, attachments, msg.Uid, msg.Flags, accountID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx)
 		if archErr != nil {
 			stats.Errors++
 			firstErr = fmt.Errorf("sync: archiving UID %d in %q: %w", msg.Uid, folder.FolderName, archErr)
@@ -138,6 +196,23 @@ func FetchNewMessages(
 		if indexErr != nil {
 			stats.IndexErrors++
 		}
+
+		// Post-archive IMAP side effects (FR-RE-03). Best-effort: the
+		// message is already safely archived at this point, so a failure
+		// here (logged via RuleActionErrors, not surfaced as firstErr)
+		// leaves the source message as-is rather than jeopardizing
+		// progress already made.
+		switch action {
+		case domain.ActionArchiveAndMarkRead:
+			if seenErr := imapclient.MarkSeen(c, msg.Uid); seenErr != nil {
+				stats.RuleActionErrors++
+			}
+		case domain.ActionArchiveAndDelete:
+			if delErr := imapclient.DeleteMessage(c, msg.Uid); delErr != nil {
+				stats.RuleActionErrors++
+			}
+		}
+
 		folder.LastUID = msg.Uid // keep the in-memory Folder in sync with what was just committed to the DB
 		stats.Archived++
 		stats.Bytes += archivedBytes
@@ -150,6 +225,55 @@ func FetchNewMessages(
 		firstErr = fmt.Errorf("sync: UID FETCH in %q: %w", folder.FolderName, fetchErr)
 	}
 	return stats, firstErr
+}
+
+// parseMessage reads msg's full body and extracts the metadata/attachment
+// list archiveOne needs to persist it and FirstMatch needs to evaluate
+// rules against it — done once per message up front so a "skip" verdict
+// never touches Maildir/SQL/the index at all.
+func parseMessage(msg *imap.Message, section *imap.BodySectionName) (raw []byte, md mimeparse.Metadata, attachments []mimeparse.Attachment, err error) {
+	body := msg.GetBody(section)
+	if body == nil {
+		return nil, mimeparse.Metadata{}, nil, fmt.Errorf("server returned no body")
+	}
+	raw, err = io.ReadAll(body)
+	if err != nil {
+		return nil, mimeparse.Metadata{}, nil, fmt.Errorf("reading body: %w", err)
+	}
+	md = mimeparse.Parse(raw)
+	attachments = mimeparse.ParseAttachments(raw)
+	return raw, md, attachments, nil
+}
+
+// candidateFrom builds the rules.Candidate FirstMatch evaluates a
+// message's condition trees against, straight from parseMessage's output
+// — no separate parsing pass.
+func candidateFrom(md mimeparse.Metadata, attachments []mimeparse.Attachment, raw []byte, folderName string, accountID int64) rules.Candidate {
+	types := make([]string, len(attachments))
+	for i, a := range attachments {
+		types[i] = a.MIMEType
+	}
+	return rules.Candidate{
+		From: md.From, FromAddr: md.FromAddr,
+		To: md.To, ToAddrs: md.ToAddrs,
+		Cc: md.Cc, CcAddrs: md.CcAddrs,
+		Subject:         md.Subject,
+		HasAttachments:  len(attachments) > 0,
+		AttachmentTypes: types,
+		Size:            int64(len(raw)),
+		Date:            md.Date,
+		FolderName:      folderName,
+		AccountID:       accountID,
+	}
+}
+
+// skipOne advances folderID's last_uid past uid without archiving
+// anything (FR-RE-03's skip action) — a message a rule skips must still
+// not be re-fetched and re-evaluated on every future sync.
+func skipOne(ctx context.Context, w writer.Writer, foldersRepo *repo.FoldersRepo, folderID int64, uid uint32) error {
+	return w.Do(ctx, func(tx *sql.Tx) error {
+		return foldersRepo.UpdateLastUID(ctx, tx, folderID, uid)
+	})
 }
 
 // archiveOne implements NFR-RL-03's atomicity contract for a single
@@ -185,8 +309,11 @@ func FetchNewMessages(
 // recovery path if the index ever falls behind.
 func archiveOne(
 	ctx context.Context,
-	msg *imap.Message,
-	section *imap.BodySectionName,
+	raw []byte,
+	md mimeparse.Metadata,
+	attachments []mimeparse.Attachment,
+	uid uint32,
+	flags []string,
 	accountID int64,
 	folder *domain.Folder,
 	mw *maildir.Writer,
@@ -196,24 +323,13 @@ func archiveOne(
 	attachmentsRepo *repo.AttachmentsRepo,
 	idx *search.Index,
 ) (bytesArchived int64, indexErr error, err error) {
-	body := msg.GetBody(section)
-	if body == nil {
-		return 0, nil, fmt.Errorf("server returned no body")
-	}
-	raw, err := io.ReadAll(body)
-	if err != nil {
-		return 0, nil, fmt.Errorf("reading body: %w", err)
-	}
-
-	md := mimeparse.Parse(raw)
 	messageID := md.MessageID
 	if messageID == "" {
-		messageID = fmt.Sprintf("<no-message-id-%d-%d-%d@mailvault.local>", accountID, folder.ID, msg.Uid)
+		messageID = fmt.Sprintf("<no-message-id-%d-%d-%d@mailvault.local>", accountID, folder.ID, uid)
 	}
-	attachments := mimeparse.ParseAttachments(raw)
 	bodyText := mimeparse.ParseBody(raw)
 
-	maildirFlags := toMaildirFlags(msg.Flags)
+	maildirFlags := toMaildirFlags(flags)
 	tmpPath, err := mw.Stage(raw, maildirFlags)
 	if err != nil {
 		return 0, nil, fmt.Errorf("staging: %w", err)
@@ -229,7 +345,7 @@ func archiveOne(
 		MessageID:       messageID,
 		AccountID:       accountID,
 		FolderID:        folder.ID,
-		UID:             msg.Uid,
+		UID:             uid,
 		Subject:         md.Subject,
 		FromAddr:        md.From,
 		ToAddrs:         md.To,
@@ -237,7 +353,7 @@ func archiveOne(
 		Date:            md.Date,
 		Size:            int64(len(raw)),
 		HasAttachments:  len(attachments) > 0,
-		Flags:           msg.Flags,
+		Flags:           flags,
 		StorageLocation: "local",
 		LocalPath:       finalPath,
 	}
@@ -260,7 +376,7 @@ func archiveOne(
 				return err
 			}
 		}
-		return foldersRepo.UpdateLastUID(ctx, tx, folder.ID, msg.Uid)
+		return foldersRepo.UpdateLastUID(ctx, tx, folder.ID, uid)
 	})
 	if err != nil {
 		// The file is already committed into new/ at this point — it's now

@@ -25,7 +25,7 @@ func TestSyncAccount_CancelledContext_RecordsCancelledStatus(t *testing.T) {
 	syncLogsRepo := repo.NewSyncLogsRepo(env.sqlDB, env.w)
 
 	_, err := SyncAccount(ctx, account, "pass", env.maildirRoot, "test-host",
-		env.w, env.foldersR, env.emailsR, env.attachmentsR, syncLogsRepo, nil, nil)
+		env.w, env.foldersR, env.emailsR, env.attachmentsR, syncLogsRepo, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected an error for an already-cancelled context, got nil")
 	}

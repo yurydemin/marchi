@@ -31,6 +31,7 @@ require (
 	github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/emersion/go-imap v1.2.1 // indirect
+	github.com/emersion/go-imap-uidplus v0.0.0-20200503180755-e75854c361e9 // indirect
 	github.com/emersion/go-message v0.18.2 // indirect
 	github.com/emersion/go-sasl v0.0.0-20200509203442-7bfe0ed36a21 // indirect
 	github.com/fasthttp/websocket v1.5.8 // indirect

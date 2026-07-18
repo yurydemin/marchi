@@ -49,9 +49,12 @@ type Deps struct {
 	EmailsRepo      *repo.EmailsRepo
 	AttachmentsRepo *repo.AttachmentsRepo
 	SyncLogsRepo    *repo.SyncLogsRepo
-	Manager         *account.Manager
-	Writer          writer.Writer
-	Host            string
+	// RulesRepo, if nil, means no Rule Engine dispatch: every message
+	// defaults to archive, matching Phase 1/2's unconditional behavior.
+	RulesRepo *repo.RulesRepo
+	Manager   *account.Manager
+	Writer    writer.Writer
+	Host      string
 	// IndexFunc returns the search index to use for the sync about to run,
 	// resolved fresh each time rather than captured once — so a caller
 	// that swaps its index at runtime (a live reindex, FR-SR-04) is picked
@@ -257,7 +260,8 @@ func (s *Scheduler) syncOne(accountID int64, jobID string) {
 
 	s.logger.Info("scheduler: starting sync", zap.String("email", a.Email))
 	results, syncErr := syncengine.SyncAccount(ctx, a, password, s.cfg.Storage.MaildirPath, s.deps.Host,
-		s.deps.Writer, s.deps.FoldersRepo, s.deps.EmailsRepo, s.deps.AttachmentsRepo, s.deps.SyncLogsRepo, idx, onProgress)
+		s.deps.Writer, s.deps.FoldersRepo, s.deps.EmailsRepo, s.deps.AttachmentsRepo, s.deps.SyncLogsRepo,
+		s.deps.RulesRepo, idx, onProgress)
 
 	archived := 0
 	for _, r := range results {
