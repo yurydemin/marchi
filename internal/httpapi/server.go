@@ -12,25 +12,87 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/csrf"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 	"go.uber.org/zap"
 
 	"github.com/yurydemin/marchi/internal/config"
+	"github.com/yurydemin/marchi/internal/security/masterkey"
 )
 
-// New builds the Fiber app.
-func New(logger *zap.Logger) *fiber.App {
+// globalRateLimit is NFR-SC-07's "1000 req/min for everything else".
+const globalRateLimit = 1000
+
+// New builds the Fiber app: recover/rate-limit/CSRF middleware, the
+// locked-state gate, and the /unlock endpoint (поправки #2/#3,
+// NFR-SC-06/07). If MAILVAULT_MASTER_KEY is set, the vault is unlocked
+// process-wide immediately — matching how every Phase 1 CLI command
+// already treats that env var (NFR-SC-01) — though, per unlock.go's doc
+// comment, that alone doesn't authenticate any browser session; a fresh
+// browser still has to hit /unlock once to get its own session cookie.
+func New(cfg *config.Config, logger *zap.Logger) *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:               "MailVault",
 		DisableStartupMessage: true,
 	})
+
+	vault := &vaultState{}
+	unlockFromEnv(cfg, logger, vault)
+
+	store := newSessionStore(cfg)
+
+	app.Use(recover.New())
+	app.Use(limiter.New(limiter.Config{
+		Max:        globalRateLimit,
+		Expiration: time.Minute,
+	}))
+	app.Use(csrf.New(csrf.Config{
+		Session:        store,
+		CookieSecure:   cfg.HTTP.TLS.Enabled,
+		CookieSameSite: "Lax",
+	}))
+	app.Use(newLockGate(store))
+
+	registerUnlock(app, cfg, logger, vault, store)
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("MailVault is running.")
 	})
 
 	return app
+}
+
+// unlockFromEnv mirrors cmd/mailvault's own unlockMasterKey for the
+// env-var path (NFR-SC-01): if MAILVAULT_MASTER_KEY is set, unlock the
+// vault right away instead of waiting for an interactive web /unlock.
+// Unlike the CLI, there's no interactive stdin fallback here — a server
+// with no env var and no browser unlock yet just stays locked.
+func unlockFromEnv(cfg *config.Config, logger *zap.Logger, vault *vaultState) {
+	envPassword, ok := os.LookupEnv(cfg.Security.MasterKeyEnv)
+	if !ok || envPassword == "" {
+		return
+	}
+	logger.Warn("SECURITY WARNING: master key password supplied via environment variable; only use this for unattended/systemd startup",
+		zap.String("env_var", cfg.Security.MasterKeyEnv))
+
+	params := masterkey.Argon2Params{
+		Memory:      cfg.Security.Argon2.Memory,
+		Iterations:  cfg.Security.Argon2.Iterations,
+		Parallelism: cfg.Security.Argon2.Parallelism,
+	}
+	key, err := masterkey.Unlock(envPassword,
+		masterkey.SaltPath(cfg.App.DataDir), masterkey.VerifyPath(cfg.App.DataDir), params)
+	if err != nil {
+		logger.Error("startup vault unlock via environment variable failed; vault remains locked", zap.Error(err))
+		return
+	}
+	vault.unlock(key)
+	logger.Info("vault unlocked at startup", zap.String("source", "env"))
 }
 
 // Serve runs the HTTP(S) server until ctx is cancelled (NFR-RL-05), then
@@ -42,7 +104,7 @@ func New(logger *zap.Logger) *fiber.App {
 // 30-second force-exit watchdog, the same safety net the sync engine's own
 // graceful shutdown (step 16, Phase 1) depends on.
 func Serve(ctx context.Context, cfg *config.Config, logger *zap.Logger) error {
-	app := New(logger)
+	app := New(cfg, logger)
 	addr := fmt.Sprintf("%s:%d", cfg.HTTP.Host, cfg.HTTP.Port)
 
 	serveErr := make(chan error, 1)

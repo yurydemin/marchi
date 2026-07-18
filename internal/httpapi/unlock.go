@@ -1,0 +1,97 @@
+package httpapi
+
+import (
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
+	"github.com/gofiber/fiber/v2/middleware/session"
+	"go.uber.org/zap"
+
+	"github.com/yurydemin/marchi/internal/config"
+	"github.com/yurydemin/marchi/internal/security/masterkey"
+)
+
+// sessionUnlockedKey is the session data key marking a browser as
+// authenticated (поправка #2: "Master Key = логин в Web UI"). Deliberately
+// distinct from vaultState: even when the vault is already unlocked
+// process-wide via MAILVAULT_MASTER_KEY at startup, a fresh browser still
+// has no session and must submit the password once via POST /unlock to
+// get one — the process already holding the key doesn't grant network
+// access to it for free.
+const sessionUnlockedKey = "unlocked"
+
+// unlockRateLimit is NFR-SC-07's "100 req/min for auth endpoints".
+const unlockRateLimit = 100
+
+type unlockRequest struct {
+	Password string `json:"password"`
+}
+
+// registerUnlock wires POST /unlock: verifies the submitted password
+// against the vault (bootstrapping it on first run, exactly like the CLI's
+// own unlock flow), marks the vault unlocked process-wide, and grants the
+// requesting browser its own session.
+func registerUnlock(app *fiber.App, cfg *config.Config, logger *zap.Logger, vault *vaultState, store *session.Store) {
+	app.Post("/unlock", limiter.New(limiter.Config{
+		Max:        unlockRateLimit,
+		Expiration: time.Minute,
+	}), func(c *fiber.Ctx) error {
+		var req unlockRequest
+		if err := c.BodyParser(&req); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
+		}
+
+		params := masterkey.Argon2Params{
+			Memory:      cfg.Security.Argon2.Memory,
+			Iterations:  cfg.Security.Argon2.Iterations,
+			Parallelism: cfg.Security.Argon2.Parallelism,
+		}
+		key, err := masterkey.Unlock(req.Password,
+			masterkey.SaltPath(cfg.App.DataDir), masterkey.VerifyPath(cfg.App.DataDir), params)
+		switch {
+		case err == nil:
+			// fall through
+		case errors.Is(err, masterkey.ErrPasswordTooShort):
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		default:
+			logger.Warn("web unlock attempt failed", zap.Error(err), zap.String("ip", c.IP()))
+			return fiber.NewError(fiber.StatusUnauthorized, "incorrect password")
+		}
+
+		vault.unlock(key)
+
+		sess, err := store.Get(c)
+		if err != nil {
+			return fmt.Errorf("httpapi: loading session: %w", err)
+		}
+		sess.Set(sessionUnlockedKey, true)
+		if err := sess.Save(); err != nil {
+			return fmt.Errorf("httpapi: saving session: %w", err)
+		}
+
+		logger.Info("web session unlocked", zap.String("ip", c.IP()))
+		return c.JSON(fiber.Map{"status": "unlocked"})
+	})
+}
+
+// newLockGate blocks every route except /unlock until the requesting
+// browser's own session is authenticated (поправка #3: locked-state — only
+// the unlock endpoint is reachable pre-unlock).
+func newLockGate(store *session.Store) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		if c.Path() == "/unlock" {
+			return c.Next()
+		}
+		sess, err := store.Get(c)
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "session error")
+		}
+		if unlocked, _ := sess.Get(sessionUnlockedKey).(bool); !unlocked {
+			return fiber.NewError(fiber.StatusUnauthorized, "vault is locked")
+		}
+		return c.Next()
+	}
+}
