@@ -6,10 +6,24 @@
 package s3store
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"path"
 	"time"
 )
+
+// ContentSHA256Hex returns the lowercase hex SHA-256 of data — used both
+// to build an EmailKey/AttachmentKey (FR-S3-04) and, independently, as
+// the integrity check EncryptObject/DecryptObject attach as object
+// metadata (FR-S3-08). Computed once per email at archive time and again
+// at upload time is deliberate, not wasteful: the sha256 embedded in the
+// S3 key must reflect the file actually being uploaded, whichever moment
+// that's computed at.
+func ContentSHA256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
 
 // EmailKey returns the FR-S3-04 object key for an archived email:
 //

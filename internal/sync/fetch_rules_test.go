@@ -43,7 +43,7 @@ func TestFetchNewMessages_SkipRule_DoesNotArchiveButAdvancesLastUID(t *testing.T
 	mw := env.newWriter(t, "INBOX")
 
 	activeRules := []*domain.Rule{skipNewsletterRule()}
-	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, activeRules, nil)
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, nil, activeRules, nil)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestFetchNewMessages_NoMatchingRule_DefaultsToArchive(t *testing.T) {
 	mw := env.newWriter(t, "INBOX")
 
 	activeRules := []*domain.Rule{skipNewsletterRule()} // won't match "Nothing special"
-	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, activeRules, nil)
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, nil, activeRules, nil)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}

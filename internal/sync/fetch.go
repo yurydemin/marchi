@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
@@ -16,6 +17,7 @@ import (
 	"github.com/yurydemin/marchi/internal/maildir"
 	"github.com/yurydemin/marchi/internal/mimeparse"
 	"github.com/yurydemin/marchi/internal/rules"
+	"github.com/yurydemin/marchi/internal/s3store"
 	"github.com/yurydemin/marchi/internal/search"
 )
 
@@ -92,6 +94,7 @@ func FetchNewMessages(
 	foldersRepo *repo.FoldersRepo,
 	attachmentsRepo *repo.AttachmentsRepo,
 	idx *search.Index, // nil skips indexing entirely — see archiveOne
+	s3Queue *repo.S3UploadQueueRepo, // nil skips S3 mirror enqueueing entirely (FR-S3-03) — see archiveOne
 	activeRules []*domain.Rule, // nil/empty: every message defaults to archive (FR-RE-03)
 	onProgress ProgressFunc, // nil skips progress reporting entirely (FR-SE-07)
 ) (stats FetchStats, err error) {
@@ -183,7 +186,7 @@ func FetchNewMessages(
 			continue
 		}
 
-		archivedBytes, indexErr, archErr := archiveOne(ctx, raw, md, attachments, msg.Uid, msg.Flags, accountID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx)
+		archivedBytes, indexErr, archErr := archiveOne(ctx, raw, md, attachments, msg.Uid, msg.Flags, accountID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx, s3Queue)
 		if archErr != nil {
 			stats.Errors++
 			firstErr = fmt.Errorf("sync: archiving UID %d in %q: %w", msg.Uid, folder.FolderName, archErr)
@@ -307,6 +310,16 @@ func skipOne(ctx context.Context, w writer.Writer, foldersRepo *repo.FoldersRepo
 // FetchStats.IndexErrors) but never fails the archival itself — the email
 // row and file are the source of truth, and FR-SR-04's full reindex is the
 // recovery path if the index ever falls behind.
+//
+// The S3 mirror upload (s3Queue, FR-S3-03) is different from search
+// indexing in one important way: s3_upload_queue lives in the same
+// SQLite database as emails, so there's no cross-store atomicity problem
+// to work around. Its INSERT rides inside the very same Single-Writer
+// transaction as the emails/attachments/last_uid writes below — if S3 is
+// enabled, the queue row and the email row are created atomically
+// together, or neither is, rather than being merely best-effort like the
+// index write has to be. The actual upload happens later, out of band,
+// in the Uploader worker pool (internal/s3store).
 func archiveOne(
 	ctx context.Context,
 	raw []byte,
@@ -322,6 +335,7 @@ func archiveOne(
 	foldersRepo *repo.FoldersRepo,
 	attachmentsRepo *repo.AttachmentsRepo,
 	idx *search.Index,
+	s3Queue *repo.S3UploadQueueRepo,
 ) (bytesArchived int64, indexErr error, err error) {
 	messageID := md.MessageID
 	if messageID == "" {
@@ -373,6 +387,16 @@ func archiveOne(
 				Size:      att.Size,
 				ContentID: att.ContentID,
 			}); err != nil {
+				return err
+			}
+		}
+		if s3Queue != nil {
+			keyDate := md.Date
+			if keyDate.IsZero() {
+				keyDate = time.Now().UTC()
+			}
+			s3Key := s3store.EmailKey(accountID, keyDate, s3store.ContentSHA256Hex(raw))
+			if err := s3Queue.Enqueue(ctx, tx, emailID, s3Key, finalPath); err != nil {
 				return err
 			}
 		}

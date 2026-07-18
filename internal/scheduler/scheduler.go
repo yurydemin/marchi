@@ -52,9 +52,15 @@ type Deps struct {
 	// RulesRepo, if nil, means no Rule Engine dispatch: every message
 	// defaults to archive, matching Phase 1/2's unconditional behavior.
 	RulesRepo *repo.RulesRepo
-	Manager   *account.Manager
-	Writer    writer.Writer
-	Host      string
+	// S3ConfigRepo/S3UploadQueueRepo, if both non-nil, let SyncAccount
+	// mirror newly-archived emails to S3 (FR-S3-03) when s3_config is
+	// Enabled — see SyncAccount's own doc comment for the nil-means-off
+	// convention this follows.
+	S3ConfigRepo      *repo.S3ConfigRepo
+	S3UploadQueueRepo *repo.S3UploadQueueRepo
+	Manager           *account.Manager
+	Writer            writer.Writer
+	Host              string
 	// IndexFunc returns the search index to use for the sync about to run,
 	// resolved fresh each time rather than captured once — so a caller
 	// that swaps its index at runtime (a live reindex, FR-SR-04) is picked
@@ -261,7 +267,7 @@ func (s *Scheduler) syncOne(accountID int64, jobID string) {
 	s.logger.Info("scheduler: starting sync", zap.String("email", a.Email))
 	results, syncErr := syncengine.SyncAccount(ctx, a, password, s.cfg.Storage.MaildirPath, s.deps.Host,
 		s.deps.Writer, s.deps.FoldersRepo, s.deps.EmailsRepo, s.deps.AttachmentsRepo, s.deps.SyncLogsRepo,
-		s.deps.RulesRepo, idx, onProgress)
+		s.deps.RulesRepo, idx, s.deps.S3ConfigRepo, s.deps.S3UploadQueueRepo, onProgress)
 
 	archived := 0
 	for _, r := range results {

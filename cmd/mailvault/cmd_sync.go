@@ -70,7 +70,9 @@ func newSyncCmd() *cobra.Command {
 			attachmentsRepo := repo.NewAttachmentsRepo(sqlDB, w)
 			syncLogsRepo := repo.NewSyncLogsRepo(sqlDB, w)
 			rulesRepo := repo.NewRulesRepo(sqlDB, w)
-			results, err := syncengine.SyncAccount(cmd.Context(), a, password, cfg.Storage.MaildirPath, host, w, foldersRepo, emailsRepo, attachmentsRepo, syncLogsRepo, rulesRepo, idx, nil)
+			s3ConfigRepo := repo.NewS3ConfigRepo(sqlDB, w)
+			s3UploadQueueRepo := repo.NewS3UploadQueueRepo(sqlDB, w)
+			results, err := syncengine.SyncAccount(cmd.Context(), a, password, cfg.Storage.MaildirPath, host, w, foldersRepo, emailsRepo, attachmentsRepo, syncLogsRepo, rulesRepo, idx, s3ConfigRepo, s3UploadQueueRepo, nil)
 
 			total := 0
 			for _, r := range results {

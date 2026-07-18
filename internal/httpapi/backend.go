@@ -48,7 +48,15 @@ type backend struct {
 	attachmentsRepo *repo.AttachmentsRepo
 	syncLogsRepo    *repo.SyncLogsRepo
 	rulesRepo       *repo.RulesRepo
-	manager         *account.Manager
+	// s3ConfigRepo/s3UploadQueueRepo feed the Scheduler (SyncAccount
+	// mirror-enqueues via them, FR-S3-03) and will feed the Settings API
+	// (Phase 3 step 9). Starting the actual upload worker pool
+	// (s3store.Uploader) is step 9's job too — it's the point where
+	// s3_config first gets real, decryptable credentials in it, so until
+	// then enqueued rows simply accumulate with nothing draining them.
+	s3ConfigRepo      *repo.S3ConfigRepo
+	s3UploadQueueRepo *repo.S3UploadQueueRepo
+	manager           *account.Manager
 
 	// indexMu guards index itself (not the index's own internal state):
 	// a live reindex (FR-SR-04's admin endpoint) closes the current index
@@ -112,32 +120,36 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 	}
 
 	b := &backend{
-		sqlDB:           sqlDB,
-		w:               w,
-		maildirRoot:     cfg.Storage.MaildirPath,
-		indexPath:       cfg.Search.IndexPath,
-		wsHub:           hub,
-		accountsRepo:    accountsRepo,
-		foldersRepo:     repo.NewFoldersRepo(sqlDB, w),
-		emailsRepo:      repo.NewEmailsRepo(sqlDB, w),
-		attachmentsRepo: repo.NewAttachmentsRepo(sqlDB, w),
-		syncLogsRepo:    repo.NewSyncLogsRepo(sqlDB, w),
-		rulesRepo:       repo.NewRulesRepo(sqlDB, w),
-		manager:         mgr,
-		index:           idx,
+		sqlDB:             sqlDB,
+		w:                 w,
+		maildirRoot:       cfg.Storage.MaildirPath,
+		indexPath:         cfg.Search.IndexPath,
+		wsHub:             hub,
+		accountsRepo:      accountsRepo,
+		foldersRepo:       repo.NewFoldersRepo(sqlDB, w),
+		emailsRepo:        repo.NewEmailsRepo(sqlDB, w),
+		attachmentsRepo:   repo.NewAttachmentsRepo(sqlDB, w),
+		syncLogsRepo:      repo.NewSyncLogsRepo(sqlDB, w),
+		rulesRepo:         repo.NewRulesRepo(sqlDB, w),
+		s3ConfigRepo:      repo.NewS3ConfigRepo(sqlDB, w),
+		s3UploadQueueRepo: repo.NewS3UploadQueueRepo(sqlDB, w),
+		manager:           mgr,
+		index:             idx,
 	}
 
 	sched, err := scheduler.New(cfg, logger, scheduler.Deps{
-		AccountsRepo:    b.accountsRepo,
-		FoldersRepo:     b.foldersRepo,
-		EmailsRepo:      b.emailsRepo,
-		AttachmentsRepo: b.attachmentsRepo,
-		SyncLogsRepo:    b.syncLogsRepo,
-		RulesRepo:       b.rulesRepo,
-		Manager:         b.manager,
-		Writer:          b.w,
-		Host:            host,
-		IndexFunc:       b.currentIndex,
+		AccountsRepo:      b.accountsRepo,
+		FoldersRepo:       b.foldersRepo,
+		EmailsRepo:        b.emailsRepo,
+		AttachmentsRepo:   b.attachmentsRepo,
+		SyncLogsRepo:      b.syncLogsRepo,
+		RulesRepo:         b.rulesRepo,
+		S3ConfigRepo:      b.s3ConfigRepo,
+		S3UploadQueueRepo: b.s3UploadQueueRepo,
+		Manager:           b.manager,
+		Writer:            b.w,
+		Host:              host,
+		IndexFunc:         b.currentIndex,
 		ProgressFunc: func(jobID string, a *domain.Account, p syncengine.Progress) {
 			hub.broadcast(syncWSEvent(jobID, a, p, false, ""))
 		},

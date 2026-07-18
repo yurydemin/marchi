@@ -130,7 +130,12 @@ func killMidSync(t *testing.T, binary, dataDir, masterKey, email string) {
 		t.Fatalf("starting sync: %v", err)
 	}
 
-	time.Sleep(150 * time.Millisecond)
+	// 150ms was the original margin (Phase 1 step 17); Phase 3's added
+	// migrations/repos push sync's own startup-to-first-archive time high
+	// enough that 150ms started landing before any message was archived
+	// at all. 400ms restores a comfortable window without risking the
+	// opposite failure (sync finishing before SIGKILL lands).
+	time.Sleep(400 * time.Millisecond)
 
 	if err := cmd.Process.Kill(); err != nil {
 		t.Fatalf("SIGKILLing sync process: %v", err)

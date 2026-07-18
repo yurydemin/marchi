@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -68,6 +69,13 @@ func SyncAccount(
 	syncLogsRepo *repo.SyncLogsRepo,
 	rulesRepo *repo.RulesRepo, // nil skips Rule Engine dispatch entirely — every message defaults to archive (FR-RE-03)
 	idx *search.Index, // nil skips search indexing entirely — see FetchNewMessages/archiveOne
+	// s3ConfigRepo/s3QueueRepo, if both non-nil, are checked once per
+	// run (like activeRules below) — S3 mirroring only actually happens
+	// if s3_config exists and is Enabled (FR-S3-03). Either being nil
+	// disables mirroring outright, no query issued — the same nil-means-
+	// off convention every other optional dependency here already uses.
+	s3ConfigRepo *repo.S3ConfigRepo,
+	s3QueueRepo *repo.S3UploadQueueRepo,
 	onProgress ProgressFunc, // nil skips progress reporting entirely (FR-SE-07)
 ) ([]FolderResult, error) {
 	startCtx, cancelStart := context.WithTimeout(context.Background(), syncLogWriteTimeout)
@@ -138,6 +146,21 @@ func SyncAccount(
 		}
 	}
 
+	// Resolved once per account sync too: whether S3 mirroring is
+	// currently on. sql.ErrNoRows (S3 never configured) is the ordinary
+	// zero-config state, not a failure — it just means mirroring stays
+	// off, same as if s3ConfigRepo/s3QueueRepo were nil to begin with.
+	var s3Queue *repo.S3UploadQueueRepo
+	if s3ConfigRepo != nil && s3QueueRepo != nil {
+		s3cfg, err := s3ConfigRepo.Get(ctx)
+		if err == nil && s3cfg.Enabled {
+			s3Queue = s3QueueRepo
+		} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			syncErr = fmt.Errorf("sync: loading s3 config: %w", err)
+			return nil, syncErr
+		}
+	}
+
 	results := make([]FolderResult, 0, len(folders))
 	var firstErr error
 	for _, folder := range folders {
@@ -164,7 +187,7 @@ func SyncAccount(
 		}
 		mw := maildir.NewWriter(layout, host)
 
-		stats, fetchErr := FetchNewMessages(ctx, c, a.ID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx, activeRules, onProgress)
+		stats, fetchErr := FetchNewMessages(ctx, c, a.ID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx, s3Queue, activeRules, onProgress)
 		total.Processed += stats.Processed
 		total.Archived += stats.Archived
 		total.Skipped += stats.Skipped
