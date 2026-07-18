@@ -130,7 +130,7 @@ func handleUpdateAccount(vault *vaultState) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		id, err := accountIDParam(c)
+		id, err := idParam(c, "id")
 		if err != nil {
 			return err
 		}
@@ -178,7 +178,7 @@ func handleDeleteAccount(vault *vaultState) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		id, err := accountIDParam(c)
+		id, err := idParam(c, "id")
 		if err != nil {
 			return err
 		}
@@ -209,7 +209,7 @@ func handleTestAccount(vault *vaultState) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		id, err := accountIDParam(c)
+		id, err := idParam(c, "id")
 		if err != nil {
 			return err
 		}
@@ -251,7 +251,7 @@ func handleSyncAccount(vault *vaultState) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		id, err := accountIDParam(c)
+		id, err := idParam(c, "id")
 		if err != nil {
 			return err
 		}
@@ -309,7 +309,7 @@ func handleListAccountFolders(vault *vaultState) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		id, err := accountIDParam(c)
+		id, err := idParam(c, "id")
 		if err != nil {
 			return err
 		}
@@ -346,7 +346,7 @@ func handleAccountSyncStatus(vault *vaultState) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		id, err := accountIDParam(c)
+		id, err := idParam(c, "id")
 		if err != nil {
 			return err
 		}
@@ -371,12 +371,14 @@ func handleAccountSyncStatus(vault *vaultState) fiber.Handler {
 	}
 }
 
-// accountIDParam parses the :id route param, returning a 400 fiber.Error
-// (not a plain error) if it isn't a valid integer.
-func accountIDParam(c *fiber.Ctx) (int64, error) {
-	id, err := strconv.ParseInt(c.Params("id"), 10, 64)
+// idParam parses the named route param as an int64, returning a 400
+// fiber.Error (not a plain error) if it isn't a valid integer. Shared
+// across accounts.go and emails.go's handlers, whose routes all use
+// :id (and, for emails, :att_id) as their id-shaped path segments.
+func idParam(c *fiber.Ctx, name string) (int64, error) {
+	id, err := strconv.ParseInt(c.Params(name), 10, 64)
 	if err != nil {
-		return 0, fiber.NewError(fiber.StatusBadRequest, "invalid account id")
+		return 0, fiber.NewError(fiber.StatusBadRequest, "invalid "+name)
 	}
 	return id, nil
 }

@@ -63,6 +63,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	registerUnlock(app, cfg, logger, vault, store)
 	registerSearch(app, vault)
 	registerAccounts(app, vault)
+	registerEmails(app, vault)
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("MailVault is running.")

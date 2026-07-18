@@ -57,6 +57,17 @@ func (r *EmailsRepo) Insert(ctx context.Context, tx *sql.Tx, e *domain.Email) (i
 	return res.LastInsertId()
 }
 
+// GetByID returns the email with the given id, or sql.ErrNoRows.
+func (r *EmailsRepo) GetByID(ctx context.Context, id int64) (*domain.Email, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, message_id, account_id, folder_id, uid, subject, from_addr,
+		       to_addrs, cc_addrs, date, size, has_attachments, flags,
+		       storage_location, local_path, s3_key, s3_etag, s3_sha256,
+		       created_at, updated_at
+		FROM emails WHERE id = ?`, id)
+	return scanEmail(row)
+}
+
 // ListAll returns every email in the archive, ordered by id — used for a
 // full reindex (FR-SR-04), which needs every locally-archived .eml
 // regardless of which account or folder it belongs to.
@@ -133,7 +144,7 @@ func (r *EmailsRepo) ListByFolder(ctx context.Context, folderID int64) ([]*domai
 	return emails, rows.Err()
 }
 
-func scanEmail(rows *sql.Rows) (*domain.Email, error) {
+func scanEmail(rows rowScanner) (*domain.Email, error) {
 	var (
 		e                                 domain.Email
 		fromAddr, s3Key, s3ETag, s3SHA256 sql.NullString

@@ -36,6 +36,14 @@ func (r *AttachmentsRepo) Insert(ctx context.Context, tx *sql.Tx, a *domain.Atta
 	return res.LastInsertId()
 }
 
+// GetByID returns the attachment with the given id, or sql.ErrNoRows.
+func (r *AttachmentsRepo) GetByID(ctx context.Context, id int64) (*domain.Attachment, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, email_id, filename, mime_type, size, content_id, local_path, s3_key, created_at
+		FROM attachments WHERE id = ?`, id)
+	return scanAttachment(row)
+}
+
 // ListByEmail returns every attachment recorded for emailID, in insertion order.
 func (r *AttachmentsRepo) ListByEmail(ctx context.Context, emailID int64) ([]*domain.Attachment, error) {
 	rows, err := r.db.QueryContext(ctx, `
@@ -48,22 +56,31 @@ func (r *AttachmentsRepo) ListByEmail(ctx context.Context, emailID int64) ([]*do
 
 	var attachments []*domain.Attachment
 	for rows.Next() {
-		var (
-			a                                     domain.Attachment
-			mimeType, contentID, localPath, s3Key sql.NullString
-			createdAt                             string
-		)
-		if err := rows.Scan(&a.ID, &a.EmailID, &a.Filename, &mimeType, &a.Size, &contentID, &localPath, &s3Key, &createdAt); err != nil {
-			return nil, fmt.Errorf("repo: scanning attachment: %w", err)
+		a, err := scanAttachment(rows)
+		if err != nil {
+			return nil, err
 		}
-		a.MIMEType = mimeType.String
-		a.ContentID = contentID.String
-		a.LocalPath = localPath.String
-		a.S3Key = s3Key.String
-		if a.CreatedAt, err = parseSQLiteTime(createdAt); err != nil {
-			return nil, fmt.Errorf("repo: parsing created_at: %w", err)
-		}
-		attachments = append(attachments, &a)
+		attachments = append(attachments, a)
 	}
 	return attachments, rows.Err()
+}
+
+func scanAttachment(row rowScanner) (*domain.Attachment, error) {
+	var (
+		a                                     domain.Attachment
+		mimeType, contentID, localPath, s3Key sql.NullString
+		createdAt                             string
+	)
+	err := row.Scan(&a.ID, &a.EmailID, &a.Filename, &mimeType, &a.Size, &contentID, &localPath, &s3Key, &createdAt)
+	if err != nil {
+		return nil, fmt.Errorf("repo: scanning attachment: %w", err)
+	}
+	a.MIMEType = mimeType.String
+	a.ContentID = contentID.String
+	a.LocalPath = localPath.String
+	a.S3Key = s3Key.String
+	if a.CreatedAt, err = parseSQLiteTime(createdAt); err != nil {
+		return nil, fmt.Errorf("repo: parsing created_at: %w", err)
+	}
+	return &a, nil
 }

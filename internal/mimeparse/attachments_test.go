@@ -140,3 +140,82 @@ func TestParseAttachments_GarbageInput_DoesNotPanic(t *testing.T) {
 	got := ParseAttachments([]byte("not an email\x00\x01\x02"))
 	_ = got // no panic is the assertion
 }
+
+func twoAttachmentsMessage() []byte {
+	return []byte("Subject: two attachments\r\n" +
+		"From: a@example.com\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/mixed; boundary=\"BOUNDARY\"\r\n" +
+		"\r\n" +
+		"--BOUNDARY\r\n" +
+		"Content-Type: text/plain\r\n" +
+		"\r\n" +
+		"See attached.\r\n" +
+		"--BOUNDARY\r\n" +
+		"Content-Type: application/pdf\r\n" +
+		"Content-Disposition: attachment; filename=\"one.pdf\"\r\n" +
+		"Content-Transfer-Encoding: base64\r\n" +
+		"\r\n" +
+		"Rmlyc3QgYXR0YWNobWVudA==\r\n" + // "First attachment"
+		"--BOUNDARY\r\n" +
+		"Content-Type: image/png\r\n" +
+		"Content-Disposition: attachment; filename=\"two.png\"\r\n" +
+		"Content-Transfer-Encoding: base64\r\n" +
+		"\r\n" +
+		"U2Vjb25kIGF0dGFjaG1lbnQ=\r\n" + // "Second attachment"
+		"--BOUNDARY--\r\n")
+}
+
+func TestExtractAttachmentAt_ReturnsCorrectContentByPosition(t *testing.T) {
+	raw := twoAttachmentsMessage()
+
+	first, ok := ExtractAttachmentAt(raw, 0)
+	if !ok {
+		t.Fatal("index 0: ok = false")
+	}
+	if string(first) != "First attachment" {
+		t.Errorf("index 0 content = %q, want %q", first, "First attachment")
+	}
+
+	second, ok := ExtractAttachmentAt(raw, 1)
+	if !ok {
+		t.Fatal("index 1: ok = false")
+	}
+	if string(second) != "Second attachment" {
+		t.Errorf("index 1 content = %q, want %q", second, "Second attachment")
+	}
+}
+
+func TestExtractAttachmentAt_MatchesParseAttachmentsOrder(t *testing.T) {
+	raw := twoAttachmentsMessage()
+	meta := ParseAttachments(raw)
+	if len(meta) != 2 {
+		t.Fatalf("got %d attachments, want 2", len(meta))
+	}
+
+	for i, m := range meta {
+		content, ok := ExtractAttachmentAt(raw, i)
+		if !ok {
+			t.Fatalf("index %d: ok = false", i)
+		}
+		if int64(len(content)) != m.Size {
+			t.Errorf("index %d (%s): content length %d, want ParseAttachments' reported Size %d",
+				i, m.Filename, len(content), m.Size)
+		}
+	}
+}
+
+func TestExtractAttachmentAt_OutOfRange(t *testing.T) {
+	raw := twoAttachmentsMessage()
+	_, ok := ExtractAttachmentAt(raw, 2)
+	if ok {
+		t.Error("expected ok = false for an out-of-range index")
+	}
+}
+
+func TestExtractAttachmentAt_EmptyInput_DoesNotPanic(t *testing.T) {
+	_, ok := ExtractAttachmentAt([]byte(""), 0)
+	if ok {
+		t.Error("expected ok = false for empty input")
+	}
+}

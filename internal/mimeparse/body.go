@@ -11,6 +11,34 @@ import (
 	"github.com/emersion/go-message/mail"
 )
 
+// BodyParts is a message's body content, kept as separate HTML/Text
+// fields rather than flattened into one string — a viewer needs to know
+// whether an HTML part exists at all, to sanitize and render it, falling
+// back to plain text only when there's no HTML part (FR-VW-01). HTML is
+// returned raw and unsanitized; sanitizing it (bluemonday) is the
+// caller's job, not this package's.
+type BodyParts struct {
+	HTML string
+	Text string
+}
+
+// ParseBodyParts walks raw's MIME tree and collects every inline
+// text/plain and text/html part (attachments are skipped — see
+// eachBodyPart). Multiple parts of the same type (unusual, but not
+// disallowed by RFC 5322) are concatenated in document order.
+func ParseBodyParts(raw []byte) BodyParts {
+	var parts BodyParts
+	eachBodyPart(raw, func(contentType string, content []byte) {
+		switch {
+		case strings.HasPrefix(contentType, "text/html"):
+			parts.HTML += string(content)
+		case contentType == "" || strings.HasPrefix(contentType, "text/plain"):
+			parts.Text += string(content)
+		}
+	})
+	return parts
+}
+
 // ParseBody extracts the plain-text content of raw suitable for full-text
 // indexing (FR-SR-02: "body ... только text/plain и text/html без
 // тегов"): every text/plain part verbatim, plus every text/html part with
@@ -18,16 +46,36 @@ import (
 // never touches the archived .eml itself, and nothing here gets stored
 // separately in SQLite.
 func ParseBody(raw []byte) string {
+	var sb strings.Builder
+	eachBodyPart(raw, func(contentType string, content []byte) {
+		switch {
+		case strings.HasPrefix(contentType, "text/html"):
+			sb.WriteString(stripHTMLTags(content))
+		case contentType == "" || strings.HasPrefix(contentType, "text/plain"):
+			sb.Write(content)
+		default:
+			return // some other inline content-type — not indexable text
+		}
+		sb.WriteByte('\n')
+	})
+	return sb.String()
+}
+
+// eachBodyPart walks raw's MIME tree and calls fn with the content-type
+// and raw bytes of every inline (non-attachment) part — the shared
+// traversal both ParseBody and ParseBodyParts build on, so the two don't
+// duplicate the same mail.Reader loop with two different ideas of what
+// counts as "body text".
+func eachBodyPart(raw []byte, fn func(contentType string, content []byte)) {
 	r, err := mail.CreateReader(bytes.NewReader(raw))
 	if r == nil {
-		return ""
+		return
 	}
 	if err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
-		return ""
+		return
 	}
 	defer r.Close()
 
-	var sb strings.Builder
 	for {
 		part, partErr := r.NextPart()
 		if partErr == io.EOF {
@@ -48,17 +96,8 @@ func ParseBody(raw []byte) string {
 		}
 
 		contentType, _, _ := ih.ContentType()
-		switch {
-		case strings.HasPrefix(contentType, "text/html"):
-			sb.WriteString(stripHTMLTags(content))
-		case contentType == "" || strings.HasPrefix(contentType, "text/plain"):
-			sb.Write(content)
-		default:
-			continue // some other inline content-type — not indexable text
-		}
-		sb.WriteByte('\n')
+		fn(contentType, content)
 	}
-	return sb.String()
 }
 
 // stripHTMLTags returns just the text nodes of an HTML document, skipping

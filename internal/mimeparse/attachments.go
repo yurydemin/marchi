@@ -73,3 +73,48 @@ func ParseAttachments(raw []byte) []Attachment {
 	}
 	return attachments
 }
+
+// ExtractAttachmentAt returns the decoded content of the attachment at
+// position index (0-based, in the same document order ParseAttachments
+// enumerates them). Since attachment content is never stored separately
+// (see ParseAttachments' doc comment), this is how a download endpoint
+// recovers an attachment's bytes: re-parse the parent .eml and read only
+// the target part, discarding every other attachment's body without
+// buffering it (same io.Copy-to-discard pattern ParseAttachments itself
+// uses for parts it's only measuring).
+func ExtractAttachmentAt(raw []byte, index int) (content []byte, ok bool) {
+	r, err := mail.CreateReader(bytes.NewReader(raw))
+	if r == nil {
+		return nil, false
+	}
+	if err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
+		return nil, false
+	}
+	defer r.Close()
+
+	n := -1
+	for {
+		part, partErr := r.NextPart()
+		if partErr == io.EOF {
+			break
+		}
+		if partErr != nil && !message.IsUnknownCharset(partErr) && !message.IsUnknownEncoding(partErr) {
+			break
+		}
+
+		if _, ok := part.Header.(*mail.AttachmentHeader); !ok {
+			continue
+		}
+		n++
+		if n != index {
+			_, _ = io.Copy(io.Discard, part.Body)
+			continue
+		}
+		data, err := io.ReadAll(part.Body)
+		if err != nil {
+			return nil, false
+		}
+		return data, true
+	}
+	return nil, false
+}
