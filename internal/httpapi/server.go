@@ -12,21 +12,30 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/csrf"
+	"github.com/gofiber/fiber/v2/middleware/filesystem"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"go.uber.org/zap"
 
 	"github.com/yurydemin/marchi/internal/config"
 	"github.com/yurydemin/marchi/internal/security/masterkey"
+	"github.com/yurydemin/marchi/internal/webui"
 )
 
 // globalRateLimit is NFR-SC-07's "1000 req/min for everything else".
 const globalRateLimit = 1000
+
+// contentSecurityPolicy is NFR-SC-05's exact header value. script-src
+// 'self' with no 'unsafe-eval' is why app.js avoids hx-on:/eval-based
+// htmx features and drives everything through htmx:* event listeners
+// instead (see web/static/js/app.js).
+const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
 
 // New builds the Fiber app: recover/rate-limit/CSRF middleware, the
 // locked-state gate, and the /unlock endpoint (поправки #2/#3,
@@ -49,7 +58,18 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 
 	store := newSessionStore(cfg)
 
+	// Templates are embedded and parsed once at startup: a failure here is
+	// a broken template caught by every test run, not a runtime condition.
+	pages, err := webui.Parse()
+	if err != nil {
+		panic(fmt.Errorf("httpapi: parsing embedded templates: %w", err))
+	}
+
 	app.Use(recover.New())
+	app.Use(func(c *fiber.Ctx) error {
+		c.Set(fiber.HeaderContentSecurityPolicy, contentSecurityPolicy)
+		return c.Next()
+	})
 	app.Use(limiter.New(limiter.Config{
 		Max:        globalRateLimit,
 		Expiration: time.Minute,
@@ -61,6 +81,11 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	}))
 	app.Use(newLockGate(store))
 
+	app.Use("/static", filesystem.New(filesystem.Config{
+		Root:   http.FS(webui.StaticFS()),
+		MaxAge: 3600,
+	}))
+
 	registerUnlock(app, cfg, logger, vault, store)
 	registerSearch(app, vault)
 	registerAccounts(app, vault)
@@ -69,10 +94,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	registerLogs(app, vault)
 	registerAdmin(app, vault)
 	registerWS(app, hub)
-
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendString("MailVault is running.")
-	})
+	registerPages(app, store, pages)
 
 	return app, vault
 }

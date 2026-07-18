@@ -40,13 +40,6 @@ func (v *vaultState) unlock(key []byte) (*backend, error) {
 	return b, nil
 }
 
-// unlocked reports whether the vault has been unlocked yet.
-func (v *vaultState) unlocked() bool {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	return v.masterKey != nil
-}
-
 // currentBackend returns the backend if the vault has been unlocked, or
 // nil otherwise — used at shutdown, where there's nothing left to build.
 func (v *vaultState) currentBackend() *backend {

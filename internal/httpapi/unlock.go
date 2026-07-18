@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -27,7 +28,7 @@ const sessionUnlockedKey = "unlocked"
 const unlockRateLimit = 100
 
 type unlockRequest struct {
-	Password string `json:"password"`
+	Password string `json:"password" form:"password"`
 }
 
 // registerUnlock wires POST /unlock: verifies the submitted password
@@ -80,19 +81,33 @@ func registerUnlock(app *fiber.App, cfg *config.Config, logger *zap.Logger, vaul
 	})
 }
 
-// newLockGate blocks every route except /unlock until the requesting
+// sessionUnlocked reports whether the requesting browser's own session is
+// authenticated — distinct from the vault being unlocked process-wide
+// (see sessionUnlockedKey's doc comment). Page handlers (pages.go) use
+// this to decide which content to render; a false here means "show the
+// unlock form", not "error".
+func sessionUnlocked(c *fiber.Ctx, store *session.Store) bool {
+	sess, err := store.Get(c)
+	if err != nil {
+		return false
+	}
+	unlocked, _ := sess.Get(sessionUnlockedKey).(bool)
+	return unlocked
+}
+
+// newLockGate blocks the JSON API and WebSocket until the requesting
 // browser's own session is authenticated (поправка #3: locked-state — only
-// the unlock endpoint is reachable pre-unlock).
+// the unlock endpoint is reachable pre-unlock). Server-rendered pages and
+// static assets are deliberately not gated here: the unlock page itself
+// needs its CSS/JS to load pre-unlock, and page handlers render a real
+// (locked or unlocked) page rather than a bare 401 — see pages.go.
 func newLockGate(store *session.Store) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		if c.Path() == "/unlock" {
+		path := c.Path()
+		if !strings.HasPrefix(path, "/api/v1") && path != "/ws" {
 			return c.Next()
 		}
-		sess, err := store.Get(c)
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "session error")
-		}
-		if unlocked, _ := sess.Get(sessionUnlockedKey).(bool); !unlocked {
+		if !sessionUnlocked(c, store) {
 			return fiber.NewError(fiber.StatusUnauthorized, "vault is locked")
 		}
 		return c.Next()
