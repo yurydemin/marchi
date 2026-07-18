@@ -94,7 +94,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	registerLogs(app, vault)
 	registerAdmin(app, vault)
 	registerWS(app, hub)
-	registerPages(app, store, pages)
+	registerPages(app, vault, store, pages)
 
 	return app, vault
 }

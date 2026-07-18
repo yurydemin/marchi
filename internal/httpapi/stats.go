@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -37,44 +38,54 @@ func handleStats(vault *vaultState) fiber.Handler {
 		if err != nil {
 			return err
 		}
-
-		emailStats, err := b.emailsRepo.Stats(c.Context())
+		resp, err := computeStats(c.Context(), b)
 		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "computing email stats failed")
+			return err
 		}
-		accounts, err := b.accountsRepo.List(c.Context())
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "listing accounts failed")
-		}
-
-		resp := statsResponse{
-			TotalEmails:       emailStats.Total,
-			TotalAccounts:     len(accounts),
-			LocalStorageBytes: emailStats.LocalBytes,
-			S3StorageBytes:    emailStats.S3Bytes,
-			Accounts:          make([]accountStatsResponse, len(accounts)),
-		}
-		for i, a := range accounts {
-			if a.IsActive {
-				resp.ActiveAccounts++
-			}
-			as := accountStatsResponse{
-				AccountID:  a.ID,
-				Email:      a.Email,
-				IsActive:   a.IsActive,
-				EmailCount: emailStats.EmailsByAccount[a.ID],
-			}
-			// One small query per account for its last sync run — fine at
-			// the scale FR-AM-03 describes ("лимит — ресурсы железа"),
-			// and avoids a more complex single query for what's normally
-			// a handful of accounts.
-			if logs, err := b.syncLogsRepo.ListByAccount(c.Context(), a.ID, 1); err == nil && len(logs) > 0 {
-				as.LastSyncStatus = string(logs[0].Status)
-				as.LastSyncAt = &logs[0].StartedAt
-			}
-			resp.Accounts[i] = as
-		}
-
 		return c.JSON(resp)
 	}
+}
+
+// computeStats is shared by the JSON API (handleStats) and the Dashboard
+// page (pages.go), so the two never drift apart on what a "last sync" or
+// a storage total means.
+func computeStats(ctx context.Context, b *backend) (statsResponse, error) {
+	emailStats, err := b.emailsRepo.Stats(ctx)
+	if err != nil {
+		return statsResponse{}, fiber.NewError(fiber.StatusInternalServerError, "computing email stats failed")
+	}
+	accounts, err := b.accountsRepo.List(ctx)
+	if err != nil {
+		return statsResponse{}, fiber.NewError(fiber.StatusInternalServerError, "listing accounts failed")
+	}
+
+	resp := statsResponse{
+		TotalEmails:       emailStats.Total,
+		TotalAccounts:     len(accounts),
+		LocalStorageBytes: emailStats.LocalBytes,
+		S3StorageBytes:    emailStats.S3Bytes,
+		Accounts:          make([]accountStatsResponse, len(accounts)),
+	}
+	for i, a := range accounts {
+		if a.IsActive {
+			resp.ActiveAccounts++
+		}
+		as := accountStatsResponse{
+			AccountID:  a.ID,
+			Email:      a.Email,
+			IsActive:   a.IsActive,
+			EmailCount: emailStats.EmailsByAccount[a.ID],
+		}
+		// One small query per account for its last sync run — fine at
+		// the scale FR-AM-03 describes ("лимит — ресурсы железа"),
+		// and avoids a more complex single query for what's normally
+		// a handful of accounts.
+		if logs, err := b.syncLogsRepo.ListByAccount(ctx, a.ID, 1); err == nil && len(logs) > 0 {
+			as.LastSyncStatus = string(logs[0].Status)
+			as.LastSyncAt = &logs[0].StartedAt
+		}
+		resp.Accounts[i] = as
+	}
+
+	return resp, nil
 }

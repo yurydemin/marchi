@@ -28,7 +28,7 @@ var pageFiles = map[string]string{
 func Parse() (map[string]*template.Template, error) {
 	pages := make(map[string]*template.Template, len(pageFiles))
 	for name, file := range pageFiles {
-		t, err := template.ParseFS(web.Templates, "templates/layout.html", file)
+		t, err := template.New("layout.html").Funcs(funcs).ParseFS(web.Templates, "templates/layout.html", file)
 		if err != nil {
 			return nil, fmt.Errorf("webui: parsing page %q: %w", name, err)
 		}

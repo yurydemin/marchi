@@ -5,7 +5,27 @@ import (
 	"io/fs"
 	"strings"
 	"testing"
+	"time"
 )
+
+// testStats mirrors the shape internal/httpapi's statsResponse feeds the
+// "index" page with (Unlocked branch). Kept local rather than importing
+// internal/httpapi, which itself imports this package.
+type testStats struct {
+	TotalEmails       int
+	TotalAccounts     int
+	ActiveAccounts    int
+	LocalStorageBytes int64
+	Accounts          []testAccountStats
+}
+
+type testAccountStats struct {
+	Email          string
+	IsActive       bool
+	EmailCount     int
+	LastSyncStatus string
+	LastSyncAt     *time.Time
+}
 
 func TestParse_ReturnsIndexPage(t *testing.T) {
 	pages, err := Parse()
@@ -23,6 +43,7 @@ func TestParse_IndexPage_RendersLockedAndUnlockedContent(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 	index := pages["index"]
+	syncedAt := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
 
 	tests := []struct {
 		name     string
@@ -30,13 +51,28 @@ func TestParse_IndexPage_RendersLockedAndUnlockedContent(t *testing.T) {
 		want     string
 		notWant  string
 	}{
-		{"locked", false, "Unlock MailVault", "Vault unlocked"},
-		{"unlocked", true, "Vault unlocked", "Unlock MailVault"},
+		{"locked", false, "Unlock MailVault", "Dashboard"},
+		{"unlocked", true, "Dashboard", "Unlock MailVault"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			data := struct{ Unlocked bool }{Unlocked: tt.unlocked}
+			data := struct {
+				Unlocked bool
+				Stats    testStats
+			}{
+				Unlocked: tt.unlocked,
+				Stats: testStats{
+					TotalEmails:       42,
+					TotalAccounts:     2,
+					ActiveAccounts:    1,
+					LocalStorageBytes: 123456,
+					Accounts: []testAccountStats{
+						{Email: "a@example.com", IsActive: true, EmailCount: 40, LastSyncStatus: "success", LastSyncAt: &syncedAt},
+						{Email: "b@example.com", IsActive: false, EmailCount: 2},
+					},
+				},
+			}
 			if err := index.ExecuteTemplate(&buf, "layout", data); err != nil {
 				t.Fatalf("ExecuteTemplate: %v", err)
 			}
