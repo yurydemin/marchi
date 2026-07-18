@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"go.uber.org/zap"
@@ -16,10 +17,18 @@ import (
 	"github.com/yurydemin/marchi/internal/db/writer"
 	"github.com/yurydemin/marchi/internal/domain"
 	"github.com/yurydemin/marchi/internal/reindex"
+	"github.com/yurydemin/marchi/internal/rules"
 	"github.com/yurydemin/marchi/internal/scheduler"
 	"github.com/yurydemin/marchi/internal/search"
 	syncengine "github.com/yurydemin/marchi/internal/sync"
 )
+
+// rulesYAMLFilename is FR-RE-05's optional rules.yaml, resolved relative
+// to the data directory (alongside mailvault.db and .salt) — the same
+// convention every other data-dir-rooted file in this project already
+// follows, rather than adding a dedicated config field for a single
+// optional path.
+const rulesYAMLFilename = "rules.yaml"
 
 // backend holds everything that requires the vault to be unlocked: the
 // SQLite connection, Single Writer, repos, Account Manager, search index,
@@ -51,6 +60,15 @@ type backend struct {
 
 	scheduler *scheduler.Scheduler
 	stopSched context.CancelFunc
+
+	// stopRulesWatch cancels the rules.yaml fsnotify watcher goroutine
+	// (FR-RE-05). Best-effort on shutdown, like the watcher itself: close()
+	// signals it to stop but doesn't block waiting for the goroutine to
+	// actually exit before closing the writer — a reload that loses this
+	// race just gets a logged, harmless "writer closed" error from Do()
+	// (see writer.Writer's own close-rejects-new-work behavior) rather
+	// than corrupting anything.
+	stopRulesWatch context.CancelFunc
 
 	// bgJobs tracks detached background work that isn't already covered
 	// by the Scheduler's own worker pool (sync goes through
@@ -142,6 +160,10 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 	b.scheduler = sched
 	b.stopSched = stopSched
 
+	rulesCtx, stopRulesWatch := context.WithCancel(context.Background())
+	go rules.WatchYAML(rulesCtx, filepath.Join(cfg.App.DataDir, rulesYAMLFilename), b.rulesRepo, logger)
+	b.stopRulesWatch = stopRulesWatch
+
 	logger.Info("backend initialized: database opened, scheduler started")
 	return b, nil
 }
@@ -214,6 +236,7 @@ func (b *backend) runReindexAsync(jobID string) {
 // for the previous one's work to be safely done before tearing down what
 // it depended on.
 func (b *backend) close(logger *zap.Logger) {
+	b.stopRulesWatch()
 	b.stopSched()
 	b.scheduler.Stop()
 	b.bgJobs.Wait()

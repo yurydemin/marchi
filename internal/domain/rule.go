@@ -45,12 +45,16 @@ const (
 // (regex pattern, plain string, "true"/"false", byte count, ISO 8601
 // date, or account id) — keeping the tree's JSON shape uniform; each
 // condition type parses Value itself at evaluation time.
+//
+// Tagged for both JSON (Rules REST API, conditions_json storage) and YAML
+// (FR-RE-05's rules.yaml) — the two use identical field names by design,
+// so a rule round-trips the same shape through either surface.
 type RuleNode struct {
-	Op       LogicalOp  `json:"op,omitempty"`
-	Children []RuleNode `json:"children,omitempty"`
+	Op       LogicalOp  `json:"op,omitempty" yaml:"op,omitempty"`
+	Children []RuleNode `json:"children,omitempty" yaml:"children,omitempty"`
 
-	Type  ConditionType `json:"type,omitempty"`
-	Value string        `json:"value,omitempty"`
+	Type  ConditionType `json:"type,omitempty" yaml:"type,omitempty"`
+	Value string        `json:"value,omitempty" yaml:"value,omitempty"`
 }
 
 // RuleAction is FR-RE-03's four possible outcomes for a rule whose
@@ -91,15 +95,18 @@ func ParseRuleAction(s string) (RuleAction, error) {
 // for), and RetentionS3Days is the final S3+SQLite cascade-delete,
 // independent of whichever A→B path was taken. nil means "no policy at
 // that stage" (keep forever / never evict).
+//
+// ID and CreatedAt are database-assigned and excluded from YAML (a
+// rules.yaml file identifies a rule by Name — see internal/rules.SyncYAML).
 type Rule struct {
-	ID                    int64
-	Name                  string
-	Priority              int
-	Conditions            RuleNode
-	Action                RuleAction
-	RetentionLocalDays    *int
-	RetentionMoveToS3Days *int
-	RetentionS3Days       *int
-	IsActive              bool
-	CreatedAt             time.Time
+	ID                    int64      `yaml:"-"`
+	Name                  string     `yaml:"name"`
+	Priority              int        `yaml:"priority"`
+	Conditions            RuleNode   `yaml:"conditions"`
+	Action                RuleAction `yaml:"action"`
+	RetentionLocalDays    *int       `yaml:"retention_local_days,omitempty"`
+	RetentionMoveToS3Days *int       `yaml:"retention_move_to_s3_days,omitempty"`
+	RetentionS3Days       *int       `yaml:"retention_s3_days,omitempty"`
+	IsActive              bool       `yaml:"is_active"`
+	CreatedAt             time.Time  `yaml:"-"`
 }

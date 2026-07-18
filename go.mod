@@ -35,6 +35,7 @@ require (
 	github.com/emersion/go-message v0.18.2 // indirect
 	github.com/emersion/go-sasl v0.0.0-20200509203442-7bfe0ed36a21 // indirect
 	github.com/fasthttp/websocket v1.5.8 // indirect
+	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gofiber/contrib/websocket v1.3.4 // indirect
 	github.com/gofiber/fiber/v2 v2.52.14 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
