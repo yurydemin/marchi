@@ -241,6 +241,9 @@ func (c *Config) EnsureDirs() error {
 	if c.Storage.Cache.Enabled {
 		dirs = append(dirs, c.Storage.Cache.Path)
 	}
+	if c.HTTP.TLS.Enabled && c.HTTP.TLS.AutoCert {
+		dirs = append(dirs, c.TLSDir())
+	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			return fmt.Errorf("creating directory %s: %w", d, err)
@@ -252,4 +255,11 @@ func (c *Config) EnsureDirs() error {
 // LogsDir is always {data_dir}/logs — not independently configurable (NFR-RL-04).
 func (c *Config) LogsDir() string {
 	return filepath.Join(c.App.DataDir, "logs")
+}
+
+// TLSDir is where an auto-generated self-signed certificate (NFR-SC-04) is
+// stored and reused across restarts — not independently configurable, same
+// as LogsDir.
+func (c *Config) TLSDir() string {
+	return filepath.Join(c.App.DataDir, "tls")
 }

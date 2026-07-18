@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/yurydemin/marchi/internal/config"
+	"github.com/yurydemin/marchi/internal/httpapi"
 	"github.com/yurydemin/marchi/internal/logging"
 	"github.com/yurydemin/marchi/internal/maildir"
 	"github.com/yurydemin/marchi/internal/version"
@@ -59,11 +60,20 @@ func newRootCmd() *cobra.Command {
 	var closeLogging func() error
 
 	root := &cobra.Command{
-		Use:           "mailvault",
-		Short:         "MailVault — self-hosted email archiving service",
-		SilenceUsage:  true,
-		SilenceErrors: false,
+		Use:          "mailvault",
+		Short:        "MailVault — self-hosted email archiving service",
+		SilenceUsage: true,
+		// main() already prints every error itself (both the "clean
+		// shutdown" and generic cases below) — leaving Cobra's own default
+		// error printer enabled would double-print "Error: ..." for every
+		// failing command.
+		SilenceErrors: true,
 		Version:       version.String(),
+		// With no subcommand, mailvault starts the web server (NFR-DP-02:
+		// "zero-config запуск ... запускает веб-интерфейс").
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return httpapi.Serve(cmd.Context(), configFrom(cmd.Context()), loggerFrom(cmd.Context()))
+		},
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			path, err := cmd.Flags().GetString("config")
 			if err != nil {

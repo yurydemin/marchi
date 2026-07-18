@@ -123,7 +123,7 @@ func TestEnsureDirs(t *testing.T) {
 		t.Fatalf("EnsureDirs: %v", err)
 	}
 
-	for _, d := range []string{dataDir, cfg.Search.IndexPath, cfg.Storage.MaildirPath, cfg.Storage.Cache.Path, cfg.LogsDir()} {
+	for _, d := range []string{dataDir, cfg.Search.IndexPath, cfg.Storage.MaildirPath, cfg.Storage.Cache.Path, cfg.LogsDir(), cfg.TLSDir()} {
 		info, err := os.Stat(d)
 		if err != nil {
 			t.Errorf("expected dir %s to exist: %v", d, err)
