@@ -31,7 +31,7 @@ func newTestBackend(t *testing.T) *backend {
 		t.Fatal(err)
 	}
 
-	b, err := newBackend(cfg, zap.NewNop(), masterKey)
+	b, err := newBackend(cfg, zap.NewNop(), masterKey, newWSHub())
 	if err != nil {
 		t.Fatalf("newBackend: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestBackend_RunReindex_SwapsToAWorkingNewIndex(t *testing.T) {
 		t.Fatalf("inserting seed email: %v", err)
 	}
 
-	stats, err := b.runReindex(ctx)
+	stats, err := b.runReindex(ctx, nil)
 	if err != nil {
 		t.Fatalf("runReindex: %v", err)
 	}

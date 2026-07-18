@@ -15,7 +15,6 @@ import (
 	"github.com/yurydemin/marchi/internal/domain"
 	"github.com/yurydemin/marchi/internal/imapclient"
 	"github.com/yurydemin/marchi/internal/maildir"
-	syncengine "github.com/yurydemin/marchi/internal/sync"
 )
 
 // registerAccounts wires the Accounts REST API (FR-API-02): CRUD, a
@@ -245,6 +244,14 @@ func handleTestAccount(vault *vaultState) fiber.Handler {
 	}
 }
 
+// handleSyncAccount triggers a sync and returns immediately (FR-SE-06's
+// "ручной запуск", FR-SE-07's WebSocket progress): the account is
+// validated synchronously so an obviously-bad request still gets a proper
+// HTTP error, but the sync itself runs on the Scheduler's worker pool via
+// TriggerSync — the same pool, and the same graceful-shutdown drain, a
+// scheduled sync uses (see Scheduler.TriggerSync's doc comment for why
+// that matters over a bare background goroutine). Progress and completion
+// go out over /ws under the returned job id.
 func handleSyncAccount(vault *vaultState) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		b, err := currentBackendOrLocked(vault)
@@ -255,43 +262,18 @@ func handleSyncAccount(vault *vaultState) fiber.Handler {
 		if err != nil {
 			return err
 		}
-		a, err := b.accountsRepo.GetByID(c.Context(), id)
-		if err != nil {
+		if _, err := b.accountsRepo.GetByID(c.Context(), id); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return fiber.NewError(fiber.StatusNotFound, "account not found")
 			}
 			return fiber.NewError(fiber.StatusInternalServerError, "loading account failed")
 		}
-		password, err := b.manager.DecryptPassword(a)
+
+		jobID, err := b.scheduler.TriggerSync(id)
 		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "decrypting password failed")
+			return fiber.NewError(fiber.StatusInternalServerError, "starting sync failed")
 		}
-
-		host, err := os.Hostname()
-		if err != nil {
-			host = "localhost"
-		}
-
-		// Synchronous for now: this blocks until the sync finishes, same
-		// as the CLI's own `mailvault sync`. A later step adds WebSocket
-		// progress and can move this to run in the background instead.
-		results, syncErr := syncengine.SyncAccount(c.Context(), a, password, b.maildirRoot, host,
-			b.w, b.foldersRepo, b.emailsRepo, b.attachmentsRepo, b.syncLogsRepo, b.currentIndex())
-
-		archived := 0
-		folderResults := make([]fiber.Map, len(results))
-		for i, r := range results {
-			archived += r.Fetched
-			folderResults[i] = fiber.Map{
-				"folder_id": r.Folder.ID, "folder_name": r.Folder.FolderName,
-				"uidvalidity": r.Folder.UIDValidity, "last_uid": r.Folder.LastUID, "fetched": r.Fetched,
-			}
-		}
-		resp := fiber.Map{"folders": folderResults, "archived": archived}
-		if syncErr != nil {
-			resp["error"] = syncErr.Error()
-		}
-		return c.JSON(resp)
+		return c.Status(fiber.StatusAccepted).JSON(fiber.Map{"job_id": jobID})
 	}
 }
 

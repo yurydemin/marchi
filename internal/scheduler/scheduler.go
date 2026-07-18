@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/panjf2000/ants/v2"
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
@@ -22,6 +23,7 @@ import (
 	"github.com/yurydemin/marchi/internal/config"
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
+	"github.com/yurydemin/marchi/internal/domain"
 	"github.com/yurydemin/marchi/internal/search"
 	syncengine "github.com/yurydemin/marchi/internal/sync"
 )
@@ -56,6 +58,19 @@ type Deps struct {
 	// up on the next scheduled sync without recreating the Scheduler. A
 	// nil IndexFunc, or one returning nil, skips search indexing entirely.
 	IndexFunc func() *search.Index
+	// ProgressFunc, if set, is called with a job id (fresh per sync run)
+	// and every syncengine.Progress update for a sync this Scheduler runs
+	// (FR-SE-07) — the same mechanism internal/httpapi uses for its own
+	// WebSocket broadcasts, so a connected client sees live progress the
+	// same way regardless of whether the sync was scheduled or manually
+	// triggered via TriggerSync.
+	ProgressFunc func(jobID string, a *domain.Account, p syncengine.Progress)
+	// CompletedFunc, if set, is called once a sync run this Scheduler ran
+	// has finished (successfully or not), with the same job id
+	// ProgressFunc saw. Separate from ProgressFunc because "the run is
+	// over" isn't itself a Progress update — there's no next message to
+	// report one for.
+	CompletedFunc func(jobID string, a *domain.Account, archived int, err error)
 }
 
 type scheduledEntry struct {
@@ -182,18 +197,36 @@ func (s *Scheduler) refresh(ctx context.Context) {
 	}
 }
 
-// runSync submits one account's sync to the bounded worker pool. Blocking
-// here — inside cron's own per-tick goroutine, not the scheduler's public
-// API — until a pool slot frees up is the concurrency limit itself
-// (cfg.Sync.MaxConcurrentAccounts).
+// runSync submits one account's scheduled sync to the bounded worker
+// pool, generating its own job id. Blocking here — inside cron's own
+// per-tick goroutine, not the scheduler's public API — until a pool slot
+// frees up is the concurrency limit itself (cfg.Sync.MaxConcurrentAccounts).
 func (s *Scheduler) runSync(accountID int64) {
-	if err := s.pool.Submit(func() { s.syncOne(accountID) }); err != nil {
+	jobID := uuid.NewString()
+	if err := s.pool.Submit(func() { s.syncOne(accountID, jobID) }); err != nil {
 		s.logger.Error("scheduler: submitting sync to worker pool failed",
 			zap.Int64("account_id", accountID), zap.Error(err))
 	}
 }
 
-func (s *Scheduler) syncOne(accountID int64) {
+// TriggerSync submits an immediate, one-off sync for accountID onto the
+// same bounded worker pool scheduled ticks use (FR-SE-06: "ручной запуск
+// через Web UI или CLI") — so a manually-triggered sync shares both the
+// concurrency cap and, critically, the graceful-shutdown drain (Stop)
+// every other sync this Scheduler runs already gets, rather than being a
+// bare detached goroutine main.go's shutdown watchdog doesn't know about.
+// Returns a job id the caller can hand back to an HTTP client immediately
+// (before the pool necessarily gets around to running it) to correlate
+// against ProgressFunc/WebSocket events.
+func (s *Scheduler) TriggerSync(accountID int64) (string, error) {
+	jobID := uuid.NewString()
+	if err := s.pool.Submit(func() { s.syncOne(accountID, jobID) }); err != nil {
+		return "", fmt.Errorf("scheduler: submitting manual sync to worker pool failed: %w", err)
+	}
+	return jobID, nil
+}
+
+func (s *Scheduler) syncOne(accountID int64, jobID string) {
 	ctx := context.Background()
 
 	a, err := s.deps.AccountsRepo.GetByID(ctx, accountID)
@@ -217,13 +250,21 @@ func (s *Scheduler) syncOne(accountID int64) {
 		idx = s.deps.IndexFunc()
 	}
 
+	var onProgress syncengine.ProgressFunc
+	if s.deps.ProgressFunc != nil {
+		onProgress = func(p syncengine.Progress) { s.deps.ProgressFunc(jobID, a, p) }
+	}
+
 	s.logger.Info("scheduler: starting sync", zap.String("email", a.Email))
 	results, syncErr := syncengine.SyncAccount(ctx, a, password, s.cfg.Storage.MaildirPath, s.deps.Host,
-		s.deps.Writer, s.deps.FoldersRepo, s.deps.EmailsRepo, s.deps.AttachmentsRepo, s.deps.SyncLogsRepo, idx)
+		s.deps.Writer, s.deps.FoldersRepo, s.deps.EmailsRepo, s.deps.AttachmentsRepo, s.deps.SyncLogsRepo, idx, onProgress)
 
 	archived := 0
 	for _, r := range results {
 		archived += r.Fetched
+	}
+	if s.deps.CompletedFunc != nil {
+		s.deps.CompletedFunc(jobID, a, archived, syncErr)
 	}
 	if syncErr != nil {
 		s.logger.Warn("scheduler: sync finished with errors",

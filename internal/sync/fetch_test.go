@@ -146,7 +146,7 @@ func TestFetchNewMessages_ArchivesEverythingAboveLastUID(t *testing.T) {
 	}
 
 	mw := env.newWriter(t, "INBOX")
-	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil)
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, nil)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestFetchNewMessages_NoNewMessages_IsANoOp(t *testing.T) {
 	folder.LastUID = 3
 
 	mw := env.newWriter(t, "INBOX")
-	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil)
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, nil)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestFetchNewMessages_SkipsWhenSyncDisabled(t *testing.T) {
 	mw := env.newWriter(t, "INBOX")
 	// Deliberately nil client: FetchNewMessages must return before ever
 	// touching it, since sync_enabled=false is checked first.
-	stats, err := FetchNewMessages(context.Background(), nil, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil)
+	stats, err := FetchNewMessages(context.Background(), nil, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, nil)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
@@ -297,7 +297,7 @@ func TestFetchNewMessages_ExtractsAttachments(t *testing.T) {
 	}
 
 	mw := env.newWriter(t, "INBOX")
-	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil)
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, nil)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
@@ -375,7 +375,7 @@ func TestFetchNewMessages_StopsOnCancelledContext(t *testing.T) {
 	cancel() // already cancelled before FetchNewMessages is even called
 
 	mw := env.newWriter(t, "INBOX")
-	stats, err := FetchNewMessages(ctx, c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil)
+	stats, err := FetchNewMessages(ctx, c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
@@ -397,5 +397,94 @@ func TestFetchNewMessages_StopsOnCancelledContext(t *testing.T) {
 	}
 	if updated[0].LastUID != 0 {
 		t.Errorf("LastUID = %d, want 0 — nothing should have been marked archived, so a retry picks up everything (NFR-RL-02)", updated[0].LastUID)
+	}
+}
+
+// TestFetchNewMessages_ReportsProgressPerMessage covers FR-SE-07: a
+// caller that wants live progress (the HTTP layer's WebSocket hub) gets
+// one report per message, in UID order, with running totals that match
+// what the final FetchStats reports.
+func TestFetchNewMessages_ReportsProgressPerMessage(t *testing.T) {
+	env := newFetchTestEnv(t)
+
+	addr := startFakeFetchServer(t, fakeFetchServer{
+		uidValidity: 1001,
+		uidNext:     4,
+		messages: []fakeMessage{
+			{uid: 1, flags: "", body: testEmail("first")},
+			{uid: 2, flags: "", body: testEmail("second")},
+			{uid: 3, flags: "", body: testEmail("third")},
+		},
+	})
+	c := connectToFakeServer(t, addr)
+	defer c.Logout()
+
+	folder, err := env.foldersR.UpsertFolder(context.Background(), env.accountID, "INBOX", 1001)
+	if err != nil {
+		t.Fatalf("UpsertFolder: %v", err)
+	}
+	mw := env.newWriter(t, "INBOX")
+
+	var reports []Progress
+	onProgress := func(p Progress) { reports = append(reports, p) }
+
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, onProgress)
+	if err != nil {
+		t.Fatalf("FetchNewMessages: %v", err)
+	}
+	if stats.Archived != 3 {
+		t.Fatalf("Archived = %d, want 3", stats.Archived)
+	}
+
+	if len(reports) != 3 {
+		t.Fatalf("got %d progress reports, want 3 (one per message)", len(reports))
+	}
+	for i, r := range reports {
+		wantUID := uint32(i + 1)
+		if r.CurrentUID != wantUID {
+			t.Errorf("reports[%d].CurrentUID = %d, want %d", i, r.CurrentUID, wantUID)
+		}
+		if r.Processed != i+1 {
+			t.Errorf("reports[%d].Processed = %d, want %d (running total)", i, r.Processed, i+1)
+		}
+		if r.Archived != i+1 {
+			t.Errorf("reports[%d].Archived = %d, want %d (running total)", i, r.Archived, i+1)
+		}
+		if r.FolderName != "INBOX" {
+			t.Errorf("reports[%d].FolderName = %q, want INBOX", i, r.FolderName)
+		}
+		if r.AccountID != env.accountID {
+			t.Errorf("reports[%d].AccountID = %d, want %d", i, r.AccountID, env.accountID)
+		}
+	}
+	// The final report's running totals must agree with FetchStats.
+	last := reports[len(reports)-1]
+	if last.Processed != stats.Processed || last.Archived != stats.Archived {
+		t.Errorf("final report {Processed:%d Archived:%d} doesn't match FetchStats {Processed:%d Archived:%d}",
+			last.Processed, last.Archived, stats.Processed, stats.Archived)
+	}
+}
+
+func TestFetchNewMessages_NilProgressFunc_DoesNotPanic(t *testing.T) {
+	env := newFetchTestEnv(t)
+	addr := startFakeFetchServer(t, fakeFetchServer{
+		uidValidity: 1001, uidNext: 2,
+		messages: []fakeMessage{{uid: 1, flags: "", body: testEmail("only")}},
+	})
+	c := connectToFakeServer(t, addr)
+	defer c.Logout()
+
+	folder, err := env.foldersR.UpsertFolder(context.Background(), env.accountID, "INBOX", 1001)
+	if err != nil {
+		t.Fatalf("UpsertFolder: %v", err)
+	}
+	mw := env.newWriter(t, "INBOX")
+
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, nil)
+	if err != nil {
+		t.Fatalf("FetchNewMessages: %v", err)
+	}
+	if stats.Archived != 1 {
+		t.Fatalf("Archived = %d, want 1", stats.Archived)
 	}
 }

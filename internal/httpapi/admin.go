@@ -1,15 +1,19 @@
 package httpapi
 
-import "github.com/gofiber/fiber/v2"
+import (
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+)
 
 // registerAdmin wires POST /api/v1/admin/reindex (FR-SR-04), the web
 // counterpart of the CLI's `mailvault reindex`. Unlike the CLI version,
 // this one runs against a live server — see backend.runReindex's doc
 // comment for how that's kept safe without pausing the Scheduler.
 //
-// Synchronous for now, same as the manual sync trigger (Phase 2 step 7):
-// FR-SR-04 calls for WebSocket progress, added in a later step, which can
-// move this to the background.
+// Returns immediately with a job id (FR-SR-04's "WebSocket-прогресс"):
+// the actual rebuild runs in a tracked background goroutine
+// (backend.runReindexAsync), broadcasting progress and completion over
+// /ws under that id.
 func registerAdmin(app *fiber.App, vault *vaultState) {
 	app.Post("/api/v1/admin/reindex", handleAdminReindex(vault))
 }
@@ -21,15 +25,8 @@ func handleAdminReindex(vault *vaultState) fiber.Handler {
 			return err
 		}
 
-		stats, err := b.runReindex(c.Context())
-		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "reindex failed: "+err.Error())
-		}
-		return c.JSON(fiber.Map{
-			"total":   stats.Total,
-			"indexed": stats.Indexed,
-			"skipped": stats.Skipped,
-			"errors":  stats.Errors,
-		})
+		jobID := uuid.NewString()
+		b.runReindexAsync(jobID)
+		return c.Status(fiber.StatusAccepted).JSON(fiber.Map{"job_id": jobID})
 	}
 }

@@ -33,7 +33,8 @@ type FolderResult struct {
 // filename's hostname component (see maildir.NewWriter). idx, if non-nil,
 // gets each newly-archived email indexed for search (FR-SR-01/02) on a
 // best-effort basis — see archiveOne's doc comment for why that can't be
-// stronger than best-effort.
+// stronger than best-effort. onProgress, if non-nil, is called after every
+// message archived or failed (FR-SE-07) — see FetchNewMessages.
 //
 // The whole run is wrapped in a sync_logs row (FR-SE-06/07): Start is
 // called before anything else, and Finish always runs via defer — even if
@@ -66,6 +67,7 @@ func SyncAccount(
 	attachmentsRepo *repo.AttachmentsRepo,
 	syncLogsRepo *repo.SyncLogsRepo,
 	idx *search.Index, // nil skips search indexing entirely — see FetchNewMessages/archiveOne
+	onProgress ProgressFunc, // nil skips progress reporting entirely (FR-SE-07)
 ) ([]FolderResult, error) {
 	startCtx, cancelStart := context.WithTimeout(context.Background(), syncLogWriteTimeout)
 	logID, logErr := syncLogsRepo.Start(startCtx, a.ID)
@@ -149,7 +151,7 @@ func SyncAccount(
 		}
 		mw := maildir.NewWriter(layout, host)
 
-		stats, fetchErr := FetchNewMessages(ctx, c, a.ID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx)
+		stats, fetchErr := FetchNewMessages(ctx, c, a.ID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx, onProgress)
 		total.Processed += stats.Processed
 		total.Archived += stats.Archived
 		total.Bytes += stats.Bytes

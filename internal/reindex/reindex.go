@@ -37,13 +37,24 @@ type Stats struct {
 	Errors  int // local file present but unreadable, or the index write itself failed
 }
 
+// ProgressFunc receives a Stats snapshot after every email considered
+// (FR-SR-04's own progress requirement) — a nil ProgressFunc means no
+// caller wants updates, same convention as internal/sync.ProgressFunc.
+type ProgressFunc func(Stats)
+
+func (f ProgressFunc) report(s Stats) {
+	if f != nil {
+		f(s)
+	}
+}
+
 // Run deletes indexPath's existing Bluge index (FR-SR-04: "Удаляет
 // текущий индекс") and rebuilds it from every email's local .eml
 // (emailsRepo.ListAll). It always returns a usable *search.Index open at
 // indexPath — even a partial or empty one on error — since the old index
 // is already gone by the time any error here could occur; the caller
 // owns closing it regardless of the returned error.
-func Run(ctx context.Context, emailsRepo *repo.EmailsRepo, indexPath string) (*search.Index, Stats, error) {
+func Run(ctx context.Context, emailsRepo *repo.EmailsRepo, indexPath string, onProgress ProgressFunc) (*search.Index, Stats, error) {
 	if err := os.RemoveAll(indexPath); err != nil {
 		return nil, Stats{}, fmt.Errorf("reindex: removing existing index at %s: %w", indexPath, err)
 	}
@@ -66,13 +77,12 @@ func Run(ctx context.Context, emailsRepo *repo.EmailsRepo, indexPath string) (*s
 		}
 		if e.StorageLocation != "local" || e.LocalPath == "" {
 			stats.Skipped++
-			continue
-		}
-		if err := indexOne(idx, e); err != nil {
+		} else if err := indexOne(idx, e); err != nil {
 			stats.Errors++
-			continue
+		} else {
+			stats.Indexed++
 		}
-		stats.Indexed++
+		onProgress.report(stats)
 	}
 	return idx, stats, nil
 }

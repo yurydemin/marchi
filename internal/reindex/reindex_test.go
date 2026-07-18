@@ -131,7 +131,7 @@ func TestRun_IndexesAllLocalEmails(t *testing.T) {
 	env.writeEmail(t, 1, testMessage("firstmessage"))
 	env.writeEmail(t, 2, testMessage("secondmessage"))
 
-	idx, stats, err := Run(context.Background(), env.emailsR, env.indexPath)
+	idx, stats, err := Run(context.Background(), env.emailsR, env.indexPath, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestRun_WipesPreexistingIndexContent(t *testing.T) {
 	// with the new content.
 	env.writeEmail(t, 1, testMessage("realmessage"))
 
-	idx, stats, err := Run(context.Background(), env.emailsR, env.indexPath)
+	idx, stats, err := Run(context.Background(), env.emailsR, env.indexPath, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestRun_MissingLocalFile_CountsAsErrorNotAbort(t *testing.T) {
 		t.Fatalf("inserting email with missing file: %v", err)
 	}
 
-	idx, stats, err := Run(context.Background(), env.emailsR, env.indexPath)
+	idx, stats, err := Run(context.Background(), env.emailsR, env.indexPath, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestRun_SkipsNonLocalEmails(t *testing.T) {
 		t.Fatalf("inserting s3-only email: %v", err)
 	}
 
-	idx, stats, err := Run(context.Background(), env.emailsR, env.indexPath)
+	idx, stats, err := Run(context.Background(), env.emailsR, env.indexPath, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -251,5 +251,51 @@ func TestRun_SkipsNonLocalEmails(t *testing.T) {
 
 	if stats.Total != 1 || stats.Skipped != 1 || stats.Indexed != 0 || stats.Errors != 0 {
 		t.Errorf("stats = %+v, want Total:1 Skipped:1 Indexed:0 Errors:0", stats)
+	}
+}
+
+func TestRun_ReportsProgressPerEmail(t *testing.T) {
+	env := newTestEnv(t)
+	env.writeEmail(t, 1, testMessage("first"))
+	env.writeEmail(t, 2, testMessage("second"))
+	env.writeEmail(t, 3, testMessage("third"))
+
+	var reports []Stats
+	onProgress := func(s Stats) { reports = append(reports, s) }
+
+	idx, finalStats, err := Run(context.Background(), env.emailsR, env.indexPath, onProgress)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	defer idx.Close()
+
+	if len(reports) != 3 {
+		t.Fatalf("got %d progress reports, want 3 (one per email)", len(reports))
+	}
+	for i, r := range reports {
+		if r.Total != 3 {
+			t.Errorf("reports[%d].Total = %d, want 3", i, r.Total)
+		}
+		if r.Indexed != i+1 {
+			t.Errorf("reports[%d].Indexed = %d, want %d (running total)", i, r.Indexed, i+1)
+		}
+	}
+	last := reports[len(reports)-1]
+	if last != finalStats {
+		t.Errorf("final report %+v doesn't match Run's returned Stats %+v", last, finalStats)
+	}
+}
+
+func TestRun_NilProgressFunc_DoesNotPanic(t *testing.T) {
+	env := newTestEnv(t)
+	env.writeEmail(t, 1, testMessage("only"))
+
+	idx, stats, err := Run(context.Background(), env.emailsR, env.indexPath, nil)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	defer idx.Close()
+	if stats.Indexed != 1 {
+		t.Errorf("Indexed = %d, want 1", stats.Indexed)
 	}
 }

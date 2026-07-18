@@ -34,7 +34,7 @@ func newReindexCmd() *cobra.Command {
 
 			emailsRepo := repo.NewEmailsRepo(sqlDB, nil) // read-only: ListAll never writes
 
-			idx, stats, err := reindex.Run(cmd.Context(), emailsRepo, cfg.Search.IndexPath)
+			idx, stats, err := reindex.Run(cmd.Context(), emailsRepo, cfg.Search.IndexPath, nil)
 			if idx != nil {
 				defer idx.Close()
 			}

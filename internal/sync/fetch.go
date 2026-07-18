@@ -71,6 +71,7 @@ func FetchNewMessages(
 	foldersRepo *repo.FoldersRepo,
 	attachmentsRepo *repo.AttachmentsRepo,
 	idx *search.Index, // nil skips indexing entirely — see archiveOne
+	onProgress ProgressFunc, // nil skips progress reporting entirely (FR-SE-07)
 ) (stats FetchStats, err error) {
 	if !folder.SyncEnabled {
 		return FetchStats{}, nil
@@ -93,6 +94,11 @@ func FetchNewMessages(
 	if startUID >= uint64(status.UidNext) {
 		return FetchStats{}, nil // nothing new
 	}
+	// Best-effort estimate: the actual count can differ slightly if
+	// messages are deleted between this SELECT and the UID FETCH below,
+	// but it's close enough for a progress indicator (FR-SE-07's "всего
+	// писем").
+	estimatedTotal := int(uint64(status.UidNext) - startUID)
 
 	seqset := new(imap.SeqSet)
 	seqset.AddRange(uint32(startUID), 0) // 0 == "*", the highest UID present
@@ -123,6 +129,10 @@ func FetchNewMessages(
 		if archErr != nil {
 			stats.Errors++
 			firstErr = fmt.Errorf("sync: archiving UID %d in %q: %w", msg.Uid, folder.FolderName, archErr)
+			onProgress.report(Progress{
+				AccountID: accountID, FolderName: folder.FolderName, CurrentUID: msg.Uid,
+				Total: estimatedTotal, Processed: stats.Processed, Archived: stats.Archived, Errors: stats.Errors,
+			})
 			continue
 		}
 		if indexErr != nil {
@@ -131,6 +141,10 @@ func FetchNewMessages(
 		folder.LastUID = msg.Uid // keep the in-memory Folder in sync with what was just committed to the DB
 		stats.Archived++
 		stats.Bytes += archivedBytes
+		onProgress.report(Progress{
+			AccountID: accountID, FolderName: folder.FolderName, CurrentUID: msg.Uid,
+			Total: estimatedTotal, Processed: stats.Processed, Archived: stats.Archived, Errors: stats.Errors,
+		})
 	}
 	if fetchErr := <-done; fetchErr != nil && firstErr == nil {
 		firstErr = fmt.Errorf("sync: UID FETCH in %q: %w", folder.FolderName, fetchErr)

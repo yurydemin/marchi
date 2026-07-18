@@ -41,8 +41,9 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 		DisableStartupMessage: true,
 	})
 
+	hub := newWSHub()
 	vault := newVaultState(func(key []byte) (*backend, error) {
-		return newBackend(cfg, logger, key)
+		return newBackend(cfg, logger, key, hub)
 	})
 	unlockFromEnv(cfg, logger, vault)
 
@@ -67,6 +68,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	registerStats(app, vault)
 	registerLogs(app, vault)
 	registerAdmin(app, vault)
+	registerWS(app, hub)
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("MailVault is running.")

@@ -240,7 +240,7 @@ func TestScheduler_SyncOne_DecryptsAndAttemptsSync(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		s.syncOne(a.ID)
+		s.syncOne(a.ID, "test-job-id")
 		close(done)
 	}()
 	select {
@@ -284,8 +284,8 @@ func TestScheduler_SyncOne_ResolvesIndexFuncFreshEachCall(t *testing.T) {
 	}
 	s := newTestScheduler(t, env)
 
-	s.syncOne(a.ID)
-	s.syncOne(a.ID)
+	s.syncOne(a.ID, "test-job-id")
+	s.syncOne(a.ID, "test-job-id")
 
 	if calls != 2 {
 		t.Errorf("IndexFunc called %d time(s) across two syncOne calls, want 2 (resolved fresh each time)", calls)
@@ -304,5 +304,48 @@ func TestScheduler_SyncOne_NilIndexFunc_DoesNotPanic(t *testing.T) {
 	env.deps.IndexFunc = nil // the zero value — never explicitly set
 	s := newTestScheduler(t, env)
 
-	s.syncOne(a.ID) // must not panic
+	s.syncOne(a.ID, "test-job-id") // must not panic
+}
+
+// TestScheduler_TriggerSync_RunsThroughTheSameWorkerPool confirms a
+// manually-triggered sync (internal/httpapi's async sync endpoint) goes
+// through the exact same bounded, drainable pool a scheduled tick does —
+// not a bare detached goroutine main.go's shutdown watchdog wouldn't know
+// about — rather than testing progress reporting itself, which needs a
+// real IMAP server to ever fire (see internal/sync's own tests, which
+// have that harness, for that).
+func TestScheduler_TriggerSync_RunsThroughTheSameWorkerPool(t *testing.T) {
+	env := newTestEnv(t)
+	a, err := env.deps.Manager.AddAccount(context.Background(), account.AddAccountParams{
+		Email: "a@example.com", IMAPHost: "127.0.0.1", IMAPPort: 1,
+		IMAPTLS: domain.IMAPTLSNone, IMAPPassword: "hunter2hunter2",
+	})
+	if err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	s := newTestScheduler(t, env)
+
+	jobID, err := s.TriggerSync(a.ID)
+	if err != nil {
+		t.Fatalf("TriggerSync: %v", err)
+	}
+	if jobID == "" {
+		t.Fatal("TriggerSync returned an empty job id")
+	}
+
+	// The pool runs the job asynchronously; wait for it to finish by
+	// polling for a sync_logs row rather than assuming a fixed delay.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		logs, err := env.deps.SyncLogsRepo.ListByAccount(context.Background(), a.ID, 1)
+		if err == nil && len(logs) == 1 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	logs, err := env.deps.SyncLogsRepo.ListByAccount(context.Background(), a.ID, 1)
+	if err != nil || len(logs) != 1 {
+		t.Fatalf("expected TriggerSync to have run and recorded a sync_logs row, got %v, %v", logs, err)
+	}
 }
