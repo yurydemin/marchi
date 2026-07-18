@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -209,5 +210,49 @@ func TestEmailsRepo_InsertFailure_DoesNotAdvanceLastUID(t *testing.T) {
 	}
 	if after[0].LastUID != 0 {
 		t.Errorf("LastUID = %d, want 0 (rolled back, the second insert's UpdateLastUID must not have taken)", after[0].LastUID)
+	}
+}
+
+func TestEmailsRepo_ListByAccount_OnlyThatAccountAcrossFolders(t *testing.T) {
+	emails, folders, accounts, w := openTestEmailsRepo(t)
+	ctx := context.Background()
+
+	accountA := mustCreateAccount(t, accounts)
+	accountB, err := accounts.Create(ctx, accountFixture("other-owner@example.com"))
+	if err != nil {
+		t.Fatalf("creating second account fixture: %v", err)
+	}
+	inboxA := mustCreateFolder(t, folders, accountA, "INBOX")
+	sentA := mustCreateFolder(t, folders, accountA, "Sent")
+	inboxB := mustCreateFolder(t, folders, accountB, "INBOX")
+
+	insert := func(accountID, folderID int64, uid uint32) {
+		err := w.Do(ctx, func(tx *sql.Tx) error {
+			_, err := emails.Insert(ctx, tx, &domain.Email{
+				MessageID: fmt.Sprintf("msg-%d-%d@example.com", accountID, uid),
+				AccountID: accountID, FolderID: folderID, UID: uid,
+				StorageLocation: "local", LocalPath: "/x",
+			})
+			return err
+		})
+		if err != nil {
+			t.Fatalf("inserting account=%d folder=%d uid=%d: %v", accountID, folderID, uid, err)
+		}
+	}
+	insert(accountA, inboxA.ID, 1)
+	insert(accountA, sentA.ID, 1)
+	insert(accountB, inboxB.ID, 1)
+
+	got, err := emails.ListByAccount(ctx, accountA)
+	if err != nil {
+		t.Fatalf("ListByAccount: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d emails, want 2 (accountB's email must be excluded)", len(got))
+	}
+	for _, e := range got {
+		if e.AccountID != accountA {
+			t.Errorf("email %d has AccountID = %d, want %d", e.ID, e.AccountID, accountA)
+		}
 	}
 }

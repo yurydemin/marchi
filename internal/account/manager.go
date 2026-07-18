@@ -89,8 +89,75 @@ func (m *Manager) AddAccount(ctx context.Context, p AddAccountParams) (*domain.A
 	if err != nil {
 		return nil, err
 	}
-	a.ID = id
-	return a, nil
+	// Re-fetch rather than just setting a.ID: CreatedAt/UpdatedAt are
+	// DB-generated defaults Create never reads back, so the in-memory a
+	// would otherwise report the zero time instead of what's actually
+	// stored — visible now that the REST API echoes this struct as JSON.
+	return m.repo.GetByID(ctx, id)
+}
+
+// UpdateAccountParams is the plaintext input for editing an existing
+// account (FR-AM-04's "редактирование", FR-AM-05's is_active toggle).
+// IMAPPassword is optional: empty means "keep the currently stored
+// password" rather than clearing it, since an edit form generally
+// shouldn't have to resubmit a password the user isn't changing.
+type UpdateAccountParams struct {
+	DisplayName  string
+	IMAPHost     string
+	IMAPPort     int
+	IMAPTLS      domain.IMAPTLSMode
+	IMAPUsername string
+	IMAPPassword string // "" keeps the existing encrypted password
+	IsActive     *bool  // nil keeps the existing value — omitting it on an edit shouldn't silently pause sync (FR-AM-05)
+	SyncCron     string
+}
+
+// UpdateAccount fetches the account by id, applies p on top of it, and
+// persists the result. Returns sql.ErrNoRows if id doesn't exist.
+func (m *Manager) UpdateAccount(ctx context.Context, id int64, p UpdateAccountParams) (*domain.Account, error) {
+	a, err := m.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if strings.TrimSpace(p.IMAPHost) == "" {
+		return nil, fmt.Errorf("account: imap host is required")
+	}
+	if p.IMAPPort < 0 || p.IMAPPort > 65535 {
+		return nil, fmt.Errorf("account: imap port must be between 0 and 65535, got %d", p.IMAPPort)
+	}
+
+	a.DisplayName = p.DisplayName
+	a.IMAPHost = p.IMAPHost
+	a.IMAPPort = p.IMAPPort
+	if a.IMAPPort == 0 {
+		a.IMAPPort = defaultPortFor(p.IMAPTLS)
+	}
+	a.IMAPTLS = p.IMAPTLS
+	a.IMAPUsername = p.IMAPUsername
+	if a.IMAPUsername == "" {
+		a.IMAPUsername = a.Email
+	}
+	if p.IsActive != nil {
+		a.IsActive = *p.IsActive
+	}
+	a.SyncCron = p.SyncCron
+
+	if p.IMAPPassword != "" {
+		encPassword, err := crypto.Encrypt(m.key, []byte(p.IMAPPassword), []byte(a.Email))
+		if err != nil {
+			return nil, fmt.Errorf("account: encrypting password: %w", err)
+		}
+		a.IMAPPasswordEncrypted = encPassword
+	}
+
+	if err := m.repo.Update(ctx, a); err != nil {
+		return nil, err
+	}
+	// Same reasoning as AddAccount: a's UpdatedAt is from before this
+	// update (it was fetched via GetByID at the top of this function), so
+	// re-fetch to return what Update's CURRENT_TIMESTAMP actually wrote.
+	return m.repo.GetByID(ctx, id)
 }
 
 // ListAccounts returns every configured account (metadata only — this

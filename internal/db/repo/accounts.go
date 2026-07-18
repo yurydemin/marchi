@@ -61,6 +61,59 @@ func (r *AccountsRepo) Create(ctx context.Context, a *domain.Account) (int64, er
 	return id, err
 }
 
+// Update replaces every mutable column of the account identified by a.ID
+// (email and id itself are not updatable — email is the account's stable
+// identifier). Like Create, credential fields are expected to already be
+// encrypted.
+func (r *AccountsRepo) Update(ctx context.Context, a *domain.Account) error {
+	return r.w.Do(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `
+			UPDATE accounts SET
+				display_name = ?, imap_host = ?, imap_port = ?, imap_tls = ?,
+				imap_username = ?, imap_password_encrypted = ?,
+				is_active = ?, sync_cron = ?, updated_at = CURRENT_TIMESTAMP
+			WHERE id = ?`,
+			nullIfEmpty(a.DisplayName), a.IMAPHost, a.IMAPPort, int(a.IMAPTLS),
+			nullIfEmpty(a.IMAPUsername), a.IMAPPasswordEncrypted,
+			boolToInt(a.IsActive), nullIfEmpty(a.SyncCron), a.ID,
+		)
+		if err != nil {
+			return wrapAccountErr(err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
+	})
+}
+
+// Delete removes the account identified by id. Every row that references
+// it (folders, emails, attachments, sync_logs) cascades via the schema's
+// own ON DELETE CASCADE foreign keys (FR-AM-06) — callers that also need
+// to clean up the search index or the on-disk Maildir archive (neither of
+// which SQLite's foreign keys can reach) must do so themselves, before
+// calling Delete, while the email rows this needs are still there to list.
+func (r *AccountsRepo) Delete(ctx context.Context, id int64) error {
+	return r.w.Do(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `DELETE FROM accounts WHERE id = ?`, id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
+	})
+}
+
 // List returns all accounts ordered by id.
 func (r *AccountsRepo) List(ctx context.Context) ([]*domain.Account, error) {
 	rows, err := r.db.QueryContext(ctx, `

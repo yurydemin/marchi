@@ -5,7 +5,11 @@
 // around.
 package domain
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 // IMAPTLSMode mirrors the accounts.imap_tls column (FR-ST-03): 0=none,
 // 1=ssl, 2=starttls.
@@ -27,6 +31,23 @@ func (m IMAPTLSMode) String() string {
 		return "starttls"
 	default:
 		return "unknown"
+	}
+}
+
+// ParseIMAPTLSMode is String's inverse — shared by the CLI's --tls flag
+// and the Accounts REST API's JSON "tls" field so the two never drift
+// apart on which strings are accepted. An empty string defaults to ssl,
+// matching the CLI's own --tls default.
+func ParseIMAPTLSMode(s string) (IMAPTLSMode, error) {
+	switch strings.ToLower(s) {
+	case "none":
+		return IMAPTLSNone, nil
+	case "ssl", "tls", "":
+		return IMAPTLSSSL, nil
+	case "starttls":
+		return IMAPTLSStartTLS, nil
+	default:
+		return 0, fmt.Errorf("invalid tls mode %q (want none, ssl, or starttls)", s)
 	}
 }
 

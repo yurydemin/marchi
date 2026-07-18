@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -127,16 +126,7 @@ func newListAccountsCmd() *cobra.Command {
 }
 
 func parseTLSMode(s string) (domain.IMAPTLSMode, error) {
-	switch strings.ToLower(s) {
-	case "none":
-		return domain.IMAPTLSNone, nil
-	case "ssl", "tls", "":
-		return domain.IMAPTLSSSL, nil
-	case "starttls":
-		return domain.IMAPTLSStartTLS, nil
-	default:
-		return 0, fmt.Errorf("invalid --tls value %q (want none, ssl, or starttls)", s)
-	}
+	return domain.ParseIMAPTLSMode(s)
 }
 
 func yesNo(b bool) string {

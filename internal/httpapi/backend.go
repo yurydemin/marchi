@@ -23,8 +23,9 @@ import (
 // the moment the vault transitions from locked to unlocked — see
 // vaultState.unlock — and lives for the rest of the process.
 type backend struct {
-	sqlDB *sql.DB
-	w     writer.Writer
+	sqlDB       *sql.DB
+	w           writer.Writer
+	maildirRoot string
 
 	accountsRepo    *repo.AccountsRepo
 	foldersRepo     *repo.FoldersRepo
@@ -73,6 +74,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte) (*back
 	b := &backend{
 		sqlDB:           sqlDB,
 		w:               w,
+		maildirRoot:     cfg.Storage.MaildirPath,
 		accountsRepo:    accountsRepo,
 		foldersRepo:     repo.NewFoldersRepo(sqlDB, w),
 		emailsRepo:      repo.NewEmailsRepo(sqlDB, w),

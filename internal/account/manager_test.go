@@ -191,3 +191,144 @@ func TestAddAccount_DuplicateEmail(t *testing.T) {
 		t.Errorf("second AddAccount error = %v, want ErrDuplicateEmail", err)
 	}
 }
+
+func TestUpdateAccount_EmptyPasswordKeepsExisting(t *testing.T) {
+	masterKey := testMasterKey(t)
+	mgr := openTestManager(t, masterKey)
+	ctx := context.Background()
+
+	a, err := mgr.AddAccount(ctx, AddAccountParams{
+		Email: "user@example.com", IMAPHost: "old.example.com", IMAPTLS: domain.IMAPTLSSSL,
+		IMAPPassword: "original-password",
+	})
+	if err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	originalCiphertext := a.IMAPPasswordEncrypted
+
+	active := true
+	updated, err := mgr.UpdateAccount(ctx, a.ID, UpdateAccountParams{
+		DisplayName: "Renamed", IMAPHost: "new.example.com", IMAPTLS: domain.IMAPTLSSSL,
+		IMAPPassword: "", // deliberately omitted
+		IsActive:     &active,
+	})
+	if err != nil {
+		t.Fatalf("UpdateAccount: %v", err)
+	}
+
+	if updated.IMAPHost != "new.example.com" || updated.DisplayName != "Renamed" {
+		t.Errorf("got %+v, want the new host/display name applied", updated)
+	}
+	if string(updated.IMAPPasswordEncrypted) != string(originalCiphertext) {
+		t.Error("password ciphertext changed despite an empty IMAPPassword in the update")
+	}
+
+	plain, err := mgr.DecryptPassword(updated)
+	if err != nil {
+		t.Fatalf("DecryptPassword: %v", err)
+	}
+	if plain != "original-password" {
+		t.Errorf("decrypted password = %q, want the original still intact", plain)
+	}
+}
+
+func TestUpdateAccount_NewPasswordReplacesOldOne(t *testing.T) {
+	mgr := openTestManager(t, testMasterKey(t))
+	ctx := context.Background()
+
+	a, err := mgr.AddAccount(ctx, AddAccountParams{
+		Email: "user@example.com", IMAPHost: "h", IMAPTLS: domain.IMAPTLSSSL, IMAPPassword: "old-pw",
+	})
+	if err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+
+	updated, err := mgr.UpdateAccount(ctx, a.ID, UpdateAccountParams{
+		IMAPHost: "h", IMAPTLS: domain.IMAPTLSSSL, IMAPPassword: "new-pw",
+	})
+	if err != nil {
+		t.Fatalf("UpdateAccount: %v", err)
+	}
+
+	plain, err := mgr.DecryptPassword(updated)
+	if err != nil {
+		t.Fatalf("DecryptPassword: %v", err)
+	}
+	if plain != "new-pw" {
+		t.Errorf("decrypted password = %q, want new-pw", plain)
+	}
+}
+
+func TestUpdateAccount_NilIsActiveKeepsExistingValue(t *testing.T) {
+	mgr := openTestManager(t, testMasterKey(t))
+	ctx := context.Background()
+
+	a, err := mgr.AddAccount(ctx, AddAccountParams{
+		Email: "user@example.com", IMAPHost: "h", IMAPTLS: domain.IMAPTLSSSL, IMAPPassword: "pw",
+	})
+	if err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	if !a.IsActive {
+		t.Fatal("AddAccount should default IsActive to true")
+	}
+
+	updated, err := mgr.UpdateAccount(ctx, a.ID, UpdateAccountParams{
+		IMAPHost: "h", IMAPTLS: domain.IMAPTLSSSL, IsActive: nil,
+	})
+	if err != nil {
+		t.Fatalf("UpdateAccount: %v", err)
+	}
+	if !updated.IsActive {
+		t.Error("IsActive flipped to false despite a nil IsActive in the update — omitting it must not silently pause sync")
+	}
+}
+
+func TestUpdateAccount_UnknownID(t *testing.T) {
+	mgr := openTestManager(t, testMasterKey(t))
+	_, err := mgr.UpdateAccount(context.Background(), 999, UpdateAccountParams{IMAPHost: "h"})
+	if err == nil {
+		t.Error("expected an error updating a nonexistent account")
+	}
+}
+
+// TestAddAccount_ReturnsPopulatedTimestamps guards against a regression:
+// AddAccount used to just set a.ID after Create and return the same
+// in-memory struct, whose CreatedAt/UpdatedAt were always the Go zero
+// value since Create never reads back the DB-generated defaults — not
+// noticed until the REST API started echoing this struct as JSON.
+func TestAddAccount_ReturnsPopulatedTimestamps(t *testing.T) {
+	mgr := openTestManager(t, testMasterKey(t))
+	a, err := mgr.AddAccount(context.Background(), AddAccountParams{
+		Email: "user@example.com", IMAPHost: "h", IMAPPassword: "p",
+	})
+	if err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	if a.CreatedAt.IsZero() {
+		t.Error("CreatedAt is the zero value, want the DB-generated timestamp")
+	}
+	if a.UpdatedAt.IsZero() {
+		t.Error("UpdatedAt is the zero value, want the DB-generated timestamp")
+	}
+}
+
+func TestUpdateAccount_ReturnsRefreshedUpdatedAt(t *testing.T) {
+	mgr := openTestManager(t, testMasterKey(t))
+	ctx := context.Background()
+	a, err := mgr.AddAccount(ctx, AddAccountParams{Email: "user@example.com", IMAPHost: "h", IMAPPassword: "p"})
+	if err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+
+	updated, err := mgr.UpdateAccount(ctx, a.ID, UpdateAccountParams{IMAPHost: "new-host"})
+	if err != nil {
+		t.Fatalf("UpdateAccount: %v", err)
+	}
+	if updated.UpdatedAt.IsZero() {
+		t.Error("UpdatedAt is the zero value after an update, want the refreshed DB timestamp")
+	}
+	if updated.UpdatedAt.Before(a.CreatedAt) {
+		t.Errorf("UpdatedAt (%v) is before the original CreatedAt (%v)", updated.UpdatedAt, a.CreatedAt)
+	}
+}

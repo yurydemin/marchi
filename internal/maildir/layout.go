@@ -28,6 +28,14 @@ func FolderDir(maildirRoot string, accountID int64, folderSafeName string) strin
 	return filepath.Join(maildirRoot, "accounts", strconv.FormatInt(accountID, 10), "mail", folderSafeName)
 }
 
+// AccountDir returns the root directory holding every folder archived for
+// one account — the parent FolderDir builds its per-folder paths under.
+// Removing this wholesale is how account deletion (FR-AM-06) cleans up the
+// account's archived .eml files on disk.
+func AccountDir(maildirRoot string, accountID int64) string {
+	return filepath.Join(maildirRoot, "accounts", strconv.FormatInt(accountID, 10))
+}
+
 // NewLayout builds the {cur,new,tmp} triple under root, creating all three
 // if they don't already exist.
 func NewLayout(root string) (Layout, error) {

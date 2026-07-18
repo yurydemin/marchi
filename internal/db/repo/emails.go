@@ -83,6 +83,32 @@ func (r *EmailsRepo) ListAll(ctx context.Context) ([]*domain.Email, error) {
 	return emails, rows.Err()
 }
 
+// ListByAccount returns every email archived for accountID, across every
+// folder — used to enumerate what needs removing from the search index
+// before an account (and its cascade-deleted rows) is deleted (FR-AM-06).
+func (r *EmailsRepo) ListByAccount(ctx context.Context, accountID int64) ([]*domain.Email, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, message_id, account_id, folder_id, uid, subject, from_addr,
+		       to_addrs, cc_addrs, date, size, has_attachments, flags,
+		       storage_location, local_path, s3_key, s3_etag, s3_sha256,
+		       created_at, updated_at
+		FROM emails WHERE account_id = ? ORDER BY id`, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("repo: listing emails for account %d: %w", accountID, err)
+	}
+	defer rows.Close()
+
+	var emails []*domain.Email
+	for rows.Next() {
+		e, err := scanEmail(rows)
+		if err != nil {
+			return nil, err
+		}
+		emails = append(emails, e)
+	}
+	return emails, rows.Err()
+}
+
 // ListByFolder returns every email recorded for folderID, ordered by uid.
 func (r *EmailsRepo) ListByFolder(ctx context.Context, folderID int64) ([]*domain.Email, error) {
 	rows, err := r.db.QueryContext(ctx, `
