@@ -2,6 +2,7 @@ package webui
 
 import (
 	"bytes"
+	"html/template"
 	"io/fs"
 	"strings"
 	"testing"
@@ -250,6 +251,141 @@ func TestParse_AccountsPage_RowAndEditRowFragmentsRenderIndependently(t *testing
 			t.Errorf("test-result fragment missing the error, got:\n%s", buf.String())
 		}
 	})
+}
+
+// testArchiveAccount/testArchiveFolder/testArchiveResult/testArchiveViewer
+// mirror the exported fields internal/httpapi's archive_ui.go feeds the
+// "archive" page with.
+type testArchiveAccount struct {
+	ID      int64
+	Email   string
+	Folders []testArchiveFolder
+}
+
+type testArchiveFolder struct {
+	ID   int64
+	Name string
+	URL  string
+}
+
+type testArchiveResult struct {
+	EmailID        int64
+	Subject        string
+	From           string
+	Date           time.Time
+	Size           int64
+	HasAttachments bool
+	AccountEmail   string
+	FolderName     string
+	ViewURL        string
+	Selected       bool
+}
+
+type testArchiveAttachment struct {
+	ID          int64
+	Filename    string
+	MIMEType    string
+	Size        int64
+	DownloadURL string
+}
+
+type testArchiveViewer struct {
+	EmailID     int64
+	Subject     string
+	From        string
+	To          []string
+	Cc          []string
+	Date        time.Time
+	BodyHTML    template.HTML
+	BodyText    string
+	Attachments []testArchiveAttachment
+	DownloadURL string
+	PrevURL     string
+	NextURL     string
+}
+
+func TestParse_ReturnsArchivePage(t *testing.T) {
+	pages, err := Parse()
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if _, ok := pages["archive"]; !ok {
+		t.Fatal(`Parse() result is missing the "archive" page`)
+	}
+}
+
+func TestParse_ArchivePage_RendersEmptyResults(t *testing.T) {
+	pages, err := Parse()
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	archive := pages["archive"]
+
+	data := struct {
+		Unlocked                                                         bool
+		Accounts                                                         []testArchiveAccount
+		Query, Sender, Recipient, DateFrom, DateTo, HasAttachments, Sort string
+		AccountID, FolderID                                              int64
+		Results                                                          []testArchiveResult
+		Total                                                            uint64
+		Offset, Limit                                                    int
+		PrevPageURL, NextPageURL                                         string
+		Viewer                                                           *testArchiveViewer
+	}{Unlocked: true, Sort: "relevance"}
+
+	var buf bytes.Buffer
+	if err := archive.ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	if !strings.Contains(buf.String(), "No emails match this search") {
+		t.Errorf("empty results must show the no-results message, got:\n%s", buf.String())
+	}
+}
+
+func TestParse_ArchivePage_RendersTreeResultsAndViewer(t *testing.T) {
+	pages, err := Parse()
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	archive := pages["archive"]
+
+	when := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
+	data := struct {
+		Unlocked                                                         bool
+		Accounts                                                         []testArchiveAccount
+		Query, Sender, Recipient, DateFrom, DateTo, HasAttachments, Sort string
+		AccountID, FolderID                                              int64
+		Results                                                          []testArchiveResult
+		Total                                                            uint64
+		Offset, Limit                                                    int
+		PrevPageURL, NextPageURL                                         string
+		Viewer                                                           *testArchiveViewer
+	}{
+		Unlocked: true, Sort: "relevance",
+		Accounts: []testArchiveAccount{
+			{ID: 1, Email: "a@example.com", Folders: []testArchiveFolder{{ID: 10, Name: "INBOX", URL: "/archive?account_id=1&folder_id=10"}}},
+		},
+		Results: []testArchiveResult{
+			{EmailID: 100, Subject: "Hello", From: "sender@example.com", Date: when, Size: 2048, ViewURL: "/archive?view=100", Selected: true},
+		},
+		Total: 1, Offset: 0, Limit: 20,
+		Viewer: &testArchiveViewer{
+			EmailID: 100, Subject: "Hello", From: "sender@example.com", Date: when,
+			BodyHTML: template.HTML("<p>Hi there</p>"), DownloadURL: "/api/v1/emails/100/download",
+			Attachments: []testArchiveAttachment{{ID: 5, Filename: "file.pdf", Size: 1024, DownloadURL: "/api/v1/emails/100/attachments/5/download"}},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := archive.ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{"INBOX", "Hello", "sender@example.com", "<p>Hi there</p>", "file.pdf"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered output missing %q, got:\n%s", want, out)
+		}
+	}
 }
 
 func TestStaticFS_ContainsExpectedAssets(t *testing.T) {

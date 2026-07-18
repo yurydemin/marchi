@@ -22,6 +22,7 @@ import (
 var pageFiles = map[string]string{
 	"index":    "templates/index.html",
 	"accounts": "templates/accounts.html",
+	"archive":  "templates/archive.html",
 }
 
 // Parse compiles every registered page once. Called at server startup

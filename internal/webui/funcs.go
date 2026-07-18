@@ -10,6 +10,8 @@ import (
 var funcs = template.FuncMap{
 	"humanBytes": humanBytes,
 	"formatTime": formatTime,
+	"formatDate": formatDate,
+	"add":        func(a, b int) int { return a + b },
 }
 
 // humanBytes renders n using the same binary (1024-based) units users see
@@ -36,5 +38,11 @@ func formatTime(t *time.Time) string {
 	if t == nil {
 		return ""
 	}
+	return t.Format("2006-01-02 15:04 MST")
+}
+
+// formatDate is formatTime's non-optional counterpart, for fields that
+// are always a real time.Time rather than "maybe never happened yet".
+func formatDate(t time.Time) string {
 	return t.Format("2006-01-02 15:04 MST")
 }

@@ -11,18 +11,18 @@
 </head>
 <body class="h-full bg-slate-50 text-slate-900">
   <header class="border-b border-slate-200 bg-white">
-    <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+    <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
       <span class="text-lg font-semibold">MailVault</span>
       {{if .Unlocked}}
       <nav class="flex items-center gap-4 text-sm">
         <a class="text-slate-600 hover:text-slate-900" href="/">Dashboard</a>
         <a class="text-slate-600 hover:text-slate-900" href="/accounts">Accounts</a>
-        <span class="text-slate-400">Archive view coming soon</span>
+        <a class="text-slate-600 hover:text-slate-900" href="/archive">Archive</a>
       </nav>
       {{end}}
     </div>
   </header>
-  <main class="mx-auto max-w-5xl px-4 py-10">
+  <main class="mx-auto max-w-7xl px-4 py-10">
     {{template "content" .}}
   </main>
 </body>
