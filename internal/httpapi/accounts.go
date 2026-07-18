@@ -188,7 +188,7 @@ func handleDeleteAccount(vault *vaultState) fiber.Handler {
 			return fiber.NewError(fiber.StatusInternalServerError, "listing account's emails failed")
 		}
 		for _, e := range emails {
-			_ = b.index.Delete(e.ID)
+			_ = b.currentIndex().Delete(e.ID)
 		}
 
 		if err := b.accountsRepo.Delete(c.Context(), id); err != nil {
@@ -276,7 +276,7 @@ func handleSyncAccount(vault *vaultState) fiber.Handler {
 		// as the CLI's own `mailvault sync`. A later step adds WebSocket
 		// progress and can move this to run in the background instead.
 		results, syncErr := syncengine.SyncAccount(c.Context(), a, password, b.maildirRoot, host,
-			b.w, b.foldersRepo, b.emailsRepo, b.attachmentsRepo, b.syncLogsRepo, b.index)
+			b.w, b.foldersRepo, b.emailsRepo, b.attachmentsRepo, b.syncLogsRepo, b.currentIndex())
 
 		archived := 0
 		folderResults := make([]fiber.Map, len(results))

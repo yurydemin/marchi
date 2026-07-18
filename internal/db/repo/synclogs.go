@@ -87,6 +87,33 @@ func (r *SyncLogsRepo) ListRecent(ctx context.Context, limit int) ([]*domain.Syn
 	return scanSyncLogs(rows)
 }
 
+// ListRecentPage is ListRecent with offset/limit pagination, for
+// GET /api/v1/logs/sync (FR-API-02: "журналы синхронизации, пагинация").
+// A separate method rather than adding offset to ListRecent so the CLI's
+// existing `status` command (which only ever wants "the last N") doesn't
+// need to change.
+func (r *SyncLogsRepo) ListRecentPage(ctx context.Context, offset, limit int) ([]*domain.SyncLog, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, account_id, started_at, ended_at, emails_processed, emails_archived,
+		       emails_skipped, bytes_downloaded, errors, status, error_msg
+		FROM sync_logs ORDER BY id DESC LIMIT ? OFFSET ?`, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("repo: listing sync logs page: %w", err)
+	}
+	defer rows.Close()
+	return scanSyncLogs(rows)
+}
+
+// CountAll returns the total number of sync_logs rows, for ListRecentPage's
+// pagination metadata.
+func (r *SyncLogsRepo) CountAll(ctx context.Context) (int, error) {
+	var n int
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sync_logs`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("repo: counting sync logs: %w", err)
+	}
+	return n, nil
+}
+
 func scanSyncLogs(rows *sql.Rows) ([]*domain.SyncLog, error) {
 	var logs []*domain.SyncLog
 	for rows.Next() {

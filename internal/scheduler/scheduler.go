@@ -50,7 +50,12 @@ type Deps struct {
 	Manager         *account.Manager
 	Writer          writer.Writer
 	Host            string
-	Index           *search.Index // nil skips search indexing entirely
+	// IndexFunc returns the search index to use for the sync about to run,
+	// resolved fresh each time rather than captured once — so a caller
+	// that swaps its index at runtime (a live reindex, FR-SR-04) is picked
+	// up on the next scheduled sync without recreating the Scheduler. A
+	// nil IndexFunc, or one returning nil, skips search indexing entirely.
+	IndexFunc func() *search.Index
 }
 
 type scheduledEntry struct {
@@ -207,9 +212,14 @@ func (s *Scheduler) syncOne(accountID int64) {
 		return
 	}
 
+	var idx *search.Index
+	if s.deps.IndexFunc != nil {
+		idx = s.deps.IndexFunc()
+	}
+
 	s.logger.Info("scheduler: starting sync", zap.String("email", a.Email))
 	results, syncErr := syncengine.SyncAccount(ctx, a, password, s.cfg.Storage.MaildirPath, s.deps.Host,
-		s.deps.Writer, s.deps.FoldersRepo, s.deps.EmailsRepo, s.deps.AttachmentsRepo, s.deps.SyncLogsRepo, s.deps.Index)
+		s.deps.Writer, s.deps.FoldersRepo, s.deps.EmailsRepo, s.deps.AttachmentsRepo, s.deps.SyncLogsRepo, idx)
 
 	archived := 0
 	for _, r := range results {

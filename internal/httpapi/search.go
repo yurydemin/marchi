@@ -28,7 +28,7 @@ func registerSearch(app *fiber.App, vault *vaultState) {
 			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}
 
-		result, err := b.index.Search(c.Context(), params)
+		result, err := b.currentIndex().Search(c.Context(), params)
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "search failed")
 		}

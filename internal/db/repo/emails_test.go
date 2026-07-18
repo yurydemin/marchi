@@ -256,3 +256,67 @@ func TestEmailsRepo_ListByAccount_OnlyThatAccountAcrossFolders(t *testing.T) {
 		}
 	}
 }
+
+func TestEmailsRepo_Stats(t *testing.T) {
+	emails, folders, accounts, w := openTestEmailsRepo(t)
+	ctx := context.Background()
+
+	accountA := mustCreateAccount(t, accounts)
+	accountB, err := accounts.Create(ctx, accountFixture("stats-owner@example.com"))
+	if err != nil {
+		t.Fatalf("creating second account: %v", err)
+	}
+	folderA := mustCreateFolder(t, folders, accountA, "INBOX")
+	folderB := mustCreateFolder(t, folders, accountB, "INBOX")
+
+	insert := func(accountID, folderID int64, uid uint32, size int64, storageLocation string) {
+		err := w.Do(ctx, func(tx *sql.Tx) error {
+			_, err := emails.Insert(ctx, tx, &domain.Email{
+				MessageID: fmt.Sprintf("msg-%d-%d@example.com", accountID, uid),
+				AccountID: accountID, FolderID: folderID, UID: uid,
+				Size: size, StorageLocation: storageLocation, LocalPath: "/x",
+			})
+			return err
+		})
+		if err != nil {
+			t.Fatalf("inserting email: %v", err)
+		}
+	}
+	insert(accountA, folderA.ID, 1, 100, "local")
+	insert(accountA, folderA.ID, 2, 200, "local")
+	insert(accountB, folderB.ID, 1, 50, "s3")
+
+	stats, err := emails.Stats(ctx)
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if stats.Total != 3 {
+		t.Errorf("Total = %d, want 3", stats.Total)
+	}
+	if stats.LocalBytes != 300 {
+		t.Errorf("LocalBytes = %d, want 300", stats.LocalBytes)
+	}
+	if stats.S3Bytes != 50 {
+		t.Errorf("S3Bytes = %d, want 50", stats.S3Bytes)
+	}
+	if stats.EmailsByAccount[accountA] != 2 {
+		t.Errorf("EmailsByAccount[accountA] = %d, want 2", stats.EmailsByAccount[accountA])
+	}
+	if stats.EmailsByAccount[accountB] != 1 {
+		t.Errorf("EmailsByAccount[accountB] = %d, want 1", stats.EmailsByAccount[accountB])
+	}
+}
+
+func TestEmailsRepo_Stats_Empty(t *testing.T) {
+	emails, _, _, _ := openTestEmailsRepo(t)
+	stats, err := emails.Stats(context.Background())
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if stats.Total != 0 || stats.LocalBytes != 0 || stats.S3Bytes != 0 {
+		t.Errorf("stats = %+v, want all zero", stats)
+	}
+	if len(stats.EmailsByAccount) != 0 {
+		t.Errorf("EmailsByAccount = %v, want empty", stats.EmailsByAccount)
+	}
+}

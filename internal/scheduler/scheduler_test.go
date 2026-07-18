@@ -17,6 +17,7 @@ import (
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
 	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/search"
 	"github.com/yurydemin/marchi/internal/security/crypto"
 )
 
@@ -258,4 +259,50 @@ func TestScheduler_SyncOne_DecryptsAndAttemptsSync(t *testing.T) {
 	if logs[0].Status != domain.SyncLogFailed {
 		t.Errorf("Status = %q, want %q (connection to an unreachable host should fail)", logs[0].Status, domain.SyncLogFailed)
 	}
+}
+
+// TestScheduler_SyncOne_ResolvesIndexFuncFreshEachCall guards the whole
+// point of IndexFunc being a function rather than a plain *search.Index:
+// a live reindex (FR-SR-04's admin endpoint, internal/httpapi) swaps the
+// index out from under a running server, and the Scheduler must pick up
+// that swap on its very next sync — not keep using whatever index existed
+// when Deps was first built.
+func TestScheduler_SyncOne_ResolvesIndexFuncFreshEachCall(t *testing.T) {
+	env := newTestEnv(t)
+	a, err := env.deps.Manager.AddAccount(context.Background(), account.AddAccountParams{
+		Email: "a@example.com", IMAPHost: "127.0.0.1", IMAPPort: 1,
+		IMAPTLS: domain.IMAPTLSNone, IMAPPassword: "hunter2hunter2",
+	})
+	if err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+
+	calls := 0
+	env.deps.IndexFunc = func() *search.Index {
+		calls++
+		return nil // the value doesn't matter here, only that it's re-resolved
+	}
+	s := newTestScheduler(t, env)
+
+	s.syncOne(a.ID)
+	s.syncOne(a.ID)
+
+	if calls != 2 {
+		t.Errorf("IndexFunc called %d time(s) across two syncOne calls, want 2 (resolved fresh each time)", calls)
+	}
+}
+
+func TestScheduler_SyncOne_NilIndexFunc_DoesNotPanic(t *testing.T) {
+	env := newTestEnv(t)
+	a, err := env.deps.Manager.AddAccount(context.Background(), account.AddAccountParams{
+		Email: "a@example.com", IMAPHost: "127.0.0.1", IMAPPort: 1,
+		IMAPTLS: domain.IMAPTLSNone, IMAPPassword: "hunter2hunter2",
+	})
+	if err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	env.deps.IndexFunc = nil // the zero value — never explicitly set
+	s := newTestScheduler(t, env)
+
+	s.syncOne(a.ID) // must not panic
 }

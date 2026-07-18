@@ -200,3 +200,62 @@ func TestSyncLogsRepo_NoLogsYet(t *testing.T) {
 		t.Errorf("got %d logs, want 0", len(list))
 	}
 }
+
+func TestSyncLogsRepo_CountAll(t *testing.T) {
+	logs, accounts := openTestSyncLogsRepo(t)
+	ctx := context.Background()
+	accountID := mustCreateAccount(t, accounts)
+
+	if n, err := logs.CountAll(ctx); err != nil || n != 0 {
+		t.Fatalf("CountAll before any runs = %d, %v, want 0, nil", n, err)
+	}
+
+	for i := 0; i < 3; i++ {
+		if _, err := logs.Start(ctx, accountID); err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+	}
+
+	if n, err := logs.CountAll(ctx); err != nil || n != 3 {
+		t.Fatalf("CountAll after 3 runs = %d, %v, want 3, nil", n, err)
+	}
+}
+
+func TestSyncLogsRepo_ListRecentPage_OffsetAndLimit(t *testing.T) {
+	logs, accounts := openTestSyncLogsRepo(t)
+	ctx := context.Background()
+	accountID := mustCreateAccount(t, accounts)
+
+	var ids []int64
+	for i := 0; i < 5; i++ {
+		id, err := logs.Start(ctx, accountID)
+		if err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+		ids = append(ids, id)
+	}
+
+	page1, err := logs.ListRecentPage(ctx, 0, 2)
+	if err != nil {
+		t.Fatalf("ListRecentPage: %v", err)
+	}
+	if len(page1) != 2 || page1[0].ID != ids[4] || page1[1].ID != ids[3] {
+		t.Fatalf("page1 = %+v, want the 2 newest runs (ids %d, %d) first", page1, ids[4], ids[3])
+	}
+
+	page2, err := logs.ListRecentPage(ctx, 2, 2)
+	if err != nil {
+		t.Fatalf("ListRecentPage: %v", err)
+	}
+	if len(page2) != 2 || page2[0].ID != ids[2] || page2[1].ID != ids[1] {
+		t.Fatalf("page2 = %+v, want the next 2 runs (ids %d, %d)", page2, ids[2], ids[1])
+	}
+
+	page3, err := logs.ListRecentPage(ctx, 4, 2)
+	if err != nil {
+		t.Fatalf("ListRecentPage: %v", err)
+	}
+	if len(page3) != 1 || page3[0].ID != ids[0] {
+		t.Fatalf("page3 = %+v, want exactly the oldest run (id %d)", page3, ids[0])
+	}
+}

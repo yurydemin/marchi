@@ -57,6 +57,49 @@ func (r *EmailsRepo) Insert(ctx context.Context, tx *sql.Tx, e *domain.Email) (i
 	return res.LastInsertId()
 }
 
+// Stats is the archive-wide summary the Dashboard (FR-WU-02) and
+// GET /api/v1/stats need: total email count, and storage volume broken
+// down by where it currently lives.
+type Stats struct {
+	Total           int
+	LocalBytes      int64
+	S3Bytes         int64
+	EmailsByAccount map[int64]int
+}
+
+// Stats computes the archive-wide summary in two queries: one aggregate
+// (total count + size by storage_location) and one GROUP BY (count per
+// account) — cheap enough to run on every dashboard load without needing
+// to cache it anywhere yet.
+func (r *EmailsRepo) Stats(ctx context.Context) (Stats, error) {
+	var s Stats
+	row := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*),
+		       COALESCE(SUM(CASE WHEN storage_location = 'local' THEN size ELSE 0 END), 0),
+		       COALESCE(SUM(CASE WHEN storage_location = 's3' THEN size ELSE 0 END), 0)
+		FROM emails`)
+	if err := row.Scan(&s.Total, &s.LocalBytes, &s.S3Bytes); err != nil {
+		return Stats{}, fmt.Errorf("repo: computing email stats: %w", err)
+	}
+
+	rows, err := r.db.QueryContext(ctx, `SELECT account_id, COUNT(*) FROM emails GROUP BY account_id`)
+	if err != nil {
+		return Stats{}, fmt.Errorf("repo: computing per-account email counts: %w", err)
+	}
+	defer rows.Close()
+
+	s.EmailsByAccount = make(map[int64]int)
+	for rows.Next() {
+		var accountID int64
+		var count int
+		if err := rows.Scan(&accountID, &count); err != nil {
+			return Stats{}, fmt.Errorf("repo: scanning per-account email count: %w", err)
+		}
+		s.EmailsByAccount[accountID] = count
+	}
+	return s, rows.Err()
+}
+
 // GetByID returns the email with the given id, or sql.ErrNoRows.
 func (r *EmailsRepo) GetByID(ctx context.Context, id int64) (*domain.Email, error) {
 	row := r.db.QueryRowContext(ctx, `
