@@ -28,11 +28,20 @@ func TestParse_WellFormedMessage(t *testing.T) {
 	if md.From != `"Alice" <alice@example.com>` {
 		t.Errorf("From = %q", md.From)
 	}
+	if md.FromAddr != "alice@example.com" {
+		t.Errorf("FromAddr = %q, want the bare address with no display name or brackets", md.FromAddr)
+	}
 	if len(md.To) != 1 || md.To[0] != `"Bob" <bob@example.com>` {
 		t.Errorf("To = %v", md.To)
 	}
+	if len(md.ToAddrs) != 1 || md.ToAddrs[0] != "bob@example.com" {
+		t.Errorf("ToAddrs = %v", md.ToAddrs)
+	}
 	if len(md.Cc) != 1 || md.Cc[0] != `"Carol" <carol@example.com>` {
 		t.Errorf("Cc = %v", md.Cc)
+	}
+	if len(md.CcAddrs) != 1 || md.CcAddrs[0] != "carol@example.com" {
+		t.Errorf("CcAddrs = %v", md.CcAddrs)
 	}
 	want := time.Date(2006, 1, 2, 15, 4, 5, 0, time.UTC)
 	if !md.Date.Equal(want) {

@@ -22,6 +22,7 @@ import (
 	"github.com/yurydemin/marchi/internal/config"
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
+	"github.com/yurydemin/marchi/internal/search"
 	syncengine "github.com/yurydemin/marchi/internal/sync"
 )
 
@@ -49,6 +50,7 @@ type Deps struct {
 	Manager         *account.Manager
 	Writer          writer.Writer
 	Host            string
+	Index           *search.Index // nil skips search indexing entirely
 }
 
 type scheduledEntry struct {
@@ -207,7 +209,7 @@ func (s *Scheduler) syncOne(accountID int64) {
 
 	s.logger.Info("scheduler: starting sync", zap.String("email", a.Email))
 	results, syncErr := syncengine.SyncAccount(ctx, a, password, s.cfg.Storage.MaildirPath, s.deps.Host,
-		s.deps.Writer, s.deps.FoldersRepo, s.deps.EmailsRepo, s.deps.AttachmentsRepo, s.deps.SyncLogsRepo)
+		s.deps.Writer, s.deps.FoldersRepo, s.deps.EmailsRepo, s.deps.AttachmentsRepo, s.deps.SyncLogsRepo, s.deps.Index)
 
 	archived := 0
 	for _, r := range results {

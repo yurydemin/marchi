@@ -10,6 +10,7 @@ import (
 	"github.com/yurydemin/marchi/internal/db"
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
+	"github.com/yurydemin/marchi/internal/search"
 	syncengine "github.com/yurydemin/marchi/internal/sync"
 )
 
@@ -58,11 +59,17 @@ func newSyncCmd() *cobra.Command {
 				host = "localhost"
 			}
 
+			idx, err := search.Open(cfg.Search.IndexPath)
+			if err != nil {
+				return err
+			}
+			defer idx.Close()
+
 			foldersRepo := repo.NewFoldersRepo(sqlDB, w)
 			emailsRepo := repo.NewEmailsRepo(sqlDB, w)
 			attachmentsRepo := repo.NewAttachmentsRepo(sqlDB, w)
 			syncLogsRepo := repo.NewSyncLogsRepo(sqlDB, w)
-			results, err := syncengine.SyncAccount(cmd.Context(), a, password, cfg.Storage.MaildirPath, host, w, foldersRepo, emailsRepo, attachmentsRepo, syncLogsRepo)
+			results, err := syncengine.SyncAccount(cmd.Context(), a, password, cfg.Storage.MaildirPath, host, w, foldersRepo, emailsRepo, attachmentsRepo, syncLogsRepo, idx)
 
 			total := 0
 			for _, r := range results {

@@ -14,12 +14,13 @@ import (
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
 	"github.com/yurydemin/marchi/internal/scheduler"
+	"github.com/yurydemin/marchi/internal/search"
 )
 
 // backend holds everything that requires the vault to be unlocked: the
-// SQLite connection, Single Writer, repos, Account Manager, and the
-// Scheduler built on top of them. It's constructed exactly once, the
-// moment the vault transitions from locked to unlocked — see
+// SQLite connection, Single Writer, repos, Account Manager, search index,
+// and the Scheduler built on top of them. It's constructed exactly once,
+// the moment the vault transitions from locked to unlocked — see
 // vaultState.unlock — and lives for the rest of the process.
 type backend struct {
 	sqlDB *sql.DB
@@ -31,6 +32,7 @@ type backend struct {
 	attachmentsRepo *repo.AttachmentsRepo
 	syncLogsRepo    *repo.SyncLogsRepo
 	manager         *account.Manager
+	index           *search.Index
 
 	scheduler *scheduler.Scheduler
 	stopSched context.CancelFunc
@@ -61,6 +63,13 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte) (*back
 		host = "localhost"
 	}
 
+	idx, err := search.Open(cfg.Search.IndexPath)
+	if err != nil {
+		w.Close()
+		_ = db.Close(sqlDB)
+		return nil, fmt.Errorf("httpapi: opening search index: %w", err)
+	}
+
 	b := &backend{
 		sqlDB:           sqlDB,
 		w:               w,
@@ -70,6 +79,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte) (*back
 		attachmentsRepo: repo.NewAttachmentsRepo(sqlDB, w),
 		syncLogsRepo:    repo.NewSyncLogsRepo(sqlDB, w),
 		manager:         mgr,
+		index:           idx,
 	}
 
 	sched, err := scheduler.New(cfg, logger, scheduler.Deps{
@@ -81,8 +91,10 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte) (*back
 		Manager:         b.manager,
 		Writer:          b.w,
 		Host:            host,
+		Index:           b.index,
 	})
 	if err != nil {
+		_ = idx.Close()
 		w.Close()
 		_ = db.Close(sqlDB)
 		return nil, fmt.Errorf("httpapi: initializing scheduler: %w", err)
@@ -96,14 +108,17 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte) (*back
 	return b, nil
 }
 
-// close stops the scheduler, the Single Writer, and the database, in that
-// order — each step waits for the previous one's work to be safely done
-// before tearing down what it depended on.
+// close stops the scheduler, the Single Writer, the search index, and the
+// database, in that order — each step waits for the previous one's work
+// to be safely done before tearing down what it depended on.
 func (b *backend) close(logger *zap.Logger) {
 	b.stopSched()
 	b.scheduler.Stop()
 	if err := b.w.Close(); err != nil {
 		logger.Warn("closing writer failed", zap.Error(err))
+	}
+	if err := b.index.Close(); err != nil {
+		logger.Warn("closing search index failed", zap.Error(err))
 	}
 	if err := db.Close(b.sqlDB); err != nil {
 		logger.Warn("closing database failed", zap.Error(err))

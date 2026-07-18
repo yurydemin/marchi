@@ -15,6 +15,7 @@ import (
 	"github.com/yurydemin/marchi/internal/imapclient"
 	"github.com/yurydemin/marchi/internal/maildir"
 	"github.com/yurydemin/marchi/internal/mimeparse"
+	"github.com/yurydemin/marchi/internal/search"
 )
 
 // imapToMaildirFlag translates the IMAP system flags into their Maildir
@@ -39,6 +40,11 @@ type FetchStats struct {
 	Archived  int
 	Bytes     int64
 	Errors    int
+	// IndexErrors counts search-index (Bluge) write failures — best-effort
+	// (see archiveOne's doc comment): the email is still fully archived
+	// and this never contributes to Errors or stops the sync. A reindex
+	// (FR-SR-04) is the recovery path if this is ever nonzero.
+	IndexErrors int
 }
 
 // FetchNewMessages selects folder on c (read-only — this is an archiver,
@@ -64,6 +70,7 @@ func FetchNewMessages(
 	emailsRepo *repo.EmailsRepo,
 	foldersRepo *repo.FoldersRepo,
 	attachmentsRepo *repo.AttachmentsRepo,
+	idx *search.Index, // nil skips indexing entirely — see archiveOne
 ) (stats FetchStats, err error) {
 	if !folder.SyncEnabled {
 		return FetchStats{}, nil
@@ -112,11 +119,14 @@ func FetchNewMessages(
 			continue
 		}
 		stats.Processed++
-		archivedBytes, archErr := archiveOne(ctx, msg, section, accountID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo)
+		archivedBytes, indexErr, archErr := archiveOne(ctx, msg, section, accountID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx)
 		if archErr != nil {
 			stats.Errors++
 			firstErr = fmt.Errorf("sync: archiving UID %d in %q: %w", msg.Uid, folder.FolderName, archErr)
 			continue
+		}
+		if indexErr != nil {
+			stats.IndexErrors++
 		}
 		folder.LastUID = msg.Uid // keep the in-memory Folder in sync with what was just committed to the DB
 		stats.Archived++
@@ -148,6 +158,17 @@ func FetchNewMessages(
 // next sync just re-fetches and re-archives the same message under a fresh
 // filename. Between "silent data loss" and "a stray file", the second is the
 // only acceptable failure mode for an archiver.
+//
+// Search indexing (idx, FR-SR-01/02) happens last, after the SQL
+// transaction commits, and is deliberately best-effort: Bluge has no way
+// to join a transaction with SQLite, so treating an index write failure as
+// fatal here would reopen exactly the kind of crash-window problem this
+// function's Maildir/SQL reordering just fixed, except now across three
+// heterogeneous stores instead of two. A failed index write is reported
+// back via the indexErr return (the caller counts it in
+// FetchStats.IndexErrors) but never fails the archival itself — the email
+// row and file are the source of truth, and FR-SR-04's full reindex is the
+// recovery path if the index ever falls behind.
 func archiveOne(
 	ctx context.Context,
 	msg *imap.Message,
@@ -159,14 +180,15 @@ func archiveOne(
 	emailsRepo *repo.EmailsRepo,
 	foldersRepo *repo.FoldersRepo,
 	attachmentsRepo *repo.AttachmentsRepo,
-) (bytesArchived int64, err error) {
+	idx *search.Index,
+) (bytesArchived int64, indexErr error, err error) {
 	body := msg.GetBody(section)
 	if body == nil {
-		return 0, fmt.Errorf("server returned no body")
+		return 0, nil, fmt.Errorf("server returned no body")
 	}
 	raw, err := io.ReadAll(body)
 	if err != nil {
-		return 0, fmt.Errorf("reading body: %w", err)
+		return 0, nil, fmt.Errorf("reading body: %w", err)
 	}
 
 	md := mimeparse.Parse(raw)
@@ -175,17 +197,18 @@ func archiveOne(
 		messageID = fmt.Sprintf("<no-message-id-%d-%d-%d@mailvault.local>", accountID, folder.ID, msg.Uid)
 	}
 	attachments := mimeparse.ParseAttachments(raw)
+	bodyText := mimeparse.ParseBody(raw)
 
 	maildirFlags := toMaildirFlags(msg.Flags)
 	tmpPath, err := mw.Stage(raw, maildirFlags)
 	if err != nil {
-		return 0, fmt.Errorf("staging: %w", err)
+		return 0, nil, fmt.Errorf("staging: %w", err)
 	}
 
 	finalPath, err := mw.Commit(tmpPath)
 	if err != nil {
 		_ = mw.Discard(tmpPath)
-		return 0, fmt.Errorf("committing maildir file: %w", err)
+		return 0, nil, fmt.Errorf("committing maildir file: %w", err)
 	}
 
 	email := &domain.Email{
@@ -205,8 +228,10 @@ func archiveOne(
 		LocalPath:       finalPath,
 	}
 
+	var emailID int64
 	err = w.Do(ctx, func(tx *sql.Tx) error {
-		emailID, err := emailsRepo.Insert(ctx, tx, email)
+		var err error
+		emailID, err = emailsRepo.Insert(ctx, tx, email)
 		if err != nil {
 			return err
 		}
@@ -228,9 +253,42 @@ func archiveOne(
 		// an orphan (see the doc comment above for why that's the accepted
 		// tradeoff), not a dangling DB reference. Nothing to roll back on
 		// the filesystem side; the next sync retries this UID from scratch.
-		return 0, fmt.Errorf("persisting (file already archived to %s but not yet indexed — will be retried and re-archived under a new name): %w", finalPath, err)
+		return 0, nil, fmt.Errorf("persisting (file already archived to %s but not yet in SQLite — will be retried and re-archived under a new name): %w", finalPath, err)
 	}
-	return int64(len(raw)), nil
+
+	if idx != nil {
+		indexErr = idx.Index(search.Doc{
+			EmailID:         emailID,
+			MessageID:       messageID,
+			Subject:         md.Subject,
+			From:            md.From,
+			FromAddr:        md.FromAddr,
+			To:              md.To,
+			ToAddrs:         md.ToAddrs,
+			Cc:              md.Cc,
+			CcAddrs:         md.CcAddrs,
+			Body:            bodyText,
+			AttachmentNames: attachmentNames(attachments),
+			Date:            md.Date,
+			AccountID:       accountID,
+			FolderID:        folder.ID,
+			HasAttachments:  len(attachments) > 0,
+			Size:            int64(len(raw)),
+		})
+	}
+
+	return int64(len(raw)), indexErr, nil
+}
+
+func attachmentNames(attachments []mimeparse.Attachment) []string {
+	if len(attachments) == 0 {
+		return nil
+	}
+	names := make([]string, len(attachments))
+	for i, a := range attachments {
+		names[i] = a.Filename
+	}
+	return names
 }
 
 func toMaildirFlags(imapFlags []string) string {

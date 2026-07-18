@@ -11,6 +11,7 @@ import (
 	"github.com/yurydemin/marchi/internal/domain"
 	"github.com/yurydemin/marchi/internal/imapclient"
 	"github.com/yurydemin/marchi/internal/maildir"
+	"github.com/yurydemin/marchi/internal/search"
 )
 
 // syncLogWriteTimeout bounds the sync_logs Start/Finish writes, which
@@ -29,7 +30,10 @@ type FolderResult struct {
 // SyncAccount connects to a using the already-decrypted password, syncs its
 // folder list (FR-SE-01), then fetches new messages for every folder into
 // maildirRoot (config.yaml's storage.maildir_path). host names the Maildir
-// filename's hostname component (see maildir.NewWriter).
+// filename's hostname component (see maildir.NewWriter). idx, if non-nil,
+// gets each newly-archived email indexed for search (FR-SR-01/02) on a
+// best-effort basis — see archiveOne's doc comment for why that can't be
+// stronger than best-effort.
 //
 // The whole run is wrapped in a sync_logs row (FR-SE-06/07): Start is
 // called before anything else, and Finish always runs via defer — even if
@@ -61,6 +65,7 @@ func SyncAccount(
 	emailsRepo *repo.EmailsRepo,
 	attachmentsRepo *repo.AttachmentsRepo,
 	syncLogsRepo *repo.SyncLogsRepo,
+	idx *search.Index, // nil skips search indexing entirely — see FetchNewMessages/archiveOne
 ) ([]FolderResult, error) {
 	startCtx, cancelStart := context.WithTimeout(context.Background(), syncLogWriteTimeout)
 	logID, logErr := syncLogsRepo.Start(startCtx, a.ID)
@@ -144,11 +149,12 @@ func SyncAccount(
 		}
 		mw := maildir.NewWriter(layout, host)
 
-		stats, fetchErr := FetchNewMessages(ctx, c, a.ID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo)
+		stats, fetchErr := FetchNewMessages(ctx, c, a.ID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx)
 		total.Processed += stats.Processed
 		total.Archived += stats.Archived
 		total.Bytes += stats.Bytes
 		total.Errors += stats.Errors
+		total.IndexErrors += stats.IndexErrors
 		results = append(results, FolderResult{Folder: folder, Fetched: stats.Archived})
 		if fetchErr != nil {
 			firstErr = fmt.Errorf("sync: fetching %q: %w", folder.FolderName, fetchErr)

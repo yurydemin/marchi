@@ -146,7 +146,7 @@ func TestFetchNewMessages_ArchivesEverythingAboveLastUID(t *testing.T) {
 	}
 
 	mw := env.newWriter(t, "INBOX")
-	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestFetchNewMessages_NoNewMessages_IsANoOp(t *testing.T) {
 	folder.LastUID = 3
 
 	mw := env.newWriter(t, "INBOX")
-	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestFetchNewMessages_SkipsWhenSyncDisabled(t *testing.T) {
 	mw := env.newWriter(t, "INBOX")
 	// Deliberately nil client: FetchNewMessages must return before ever
 	// touching it, since sync_enabled=false is checked first.
-	stats, err := FetchNewMessages(context.Background(), nil, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
+	stats, err := FetchNewMessages(context.Background(), nil, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
@@ -297,7 +297,7 @@ func TestFetchNewMessages_ExtractsAttachments(t *testing.T) {
 	}
 
 	mw := env.newWriter(t, "INBOX")
-	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
+	stats, err := FetchNewMessages(context.Background(), c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil)
 	if err != nil {
 		t.Fatalf("FetchNewMessages: %v", err)
 	}
@@ -375,7 +375,7 @@ func TestFetchNewMessages_StopsOnCancelledContext(t *testing.T) {
 	cancel() // already cancelled before FetchNewMessages is even called
 
 	mw := env.newWriter(t, "INBOX")
-	stats, err := FetchNewMessages(ctx, c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR)
+	stats, err := FetchNewMessages(ctx, c, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}

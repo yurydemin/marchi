@@ -19,12 +19,24 @@ import (
 // Metadata is what gets extracted for SQLite indexing (FR-ST-03's emails
 // table columns) — not the full parsed message, just the header fields
 // MailVault cares about for search/browsing.
+//
+// From/To/Cc are the RFC 5322 mailbox strings (e.g. `"Alice" <a@x.com>` or
+// just `<a@x.com>` with no display name) — the human-readable form SQLite
+// stores and the UI shows. FromAddr/ToAddrs/CcAddrs are the same
+// addresses stripped down to the bare email, for exact-match use (the
+// search index's *_exact fields, and eventually Rule Engine conditions
+// like from_exact in FR-RE-02) where a caller filtering by
+// "alice@example.com" shouldn't have to also match a display name or
+// angle brackets.
 type Metadata struct {
 	MessageID string
 	Subject   string
 	From      string
+	FromAddr  string
 	To        []string
+	ToAddrs   []string
 	Cc        []string
+	CcAddrs   []string
 	Date      time.Time
 }
 
@@ -54,12 +66,15 @@ func Parse(raw []byte) Metadata {
 	}
 	if from, err := h.AddressList("From"); err == nil && len(from) > 0 {
 		md.From = from[0].String()
+		md.FromAddr = from[0].Address
 	}
 	if to, err := h.AddressList("To"); err == nil {
 		md.To = addressStrings(to)
+		md.ToAddrs = bareAddresses(to)
 	}
 	if cc, err := h.AddressList("Cc"); err == nil {
 		md.Cc = addressStrings(cc)
+		md.CcAddrs = bareAddresses(cc)
 	}
 
 	return md
@@ -72,6 +87,17 @@ func addressStrings(addrs []*mail.Address) []string {
 	out := make([]string, len(addrs))
 	for i, a := range addrs {
 		out[i] = a.String()
+	}
+	return out
+}
+
+func bareAddresses(addrs []*mail.Address) []string {
+	if len(addrs) == 0 {
+		return nil
+	}
+	out := make([]string, len(addrs))
+	for i, a := range addrs {
+		out[i] = a.Address
 	}
 	return out
 }
