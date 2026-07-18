@@ -61,7 +61,10 @@ func registerUnlock(app *fiber.App, cfg *config.Config, logger *zap.Logger, vaul
 			return fiber.NewError(fiber.StatusUnauthorized, "incorrect password")
 		}
 
-		vault.unlock(key)
+		if _, err := vault.unlock(key); err != nil {
+			logger.Error("unlocking vault failed", zap.Error(err))
+			return fiber.NewError(fiber.StatusInternalServerError, "unlock failed")
+		}
 
 		sess, err := store.Get(c)
 		if err != nil {

@@ -35,13 +35,15 @@ const globalRateLimit = 1000
 // already treats that env var (NFR-SC-01) — though, per unlock.go's doc
 // comment, that alone doesn't authenticate any browser session; a fresh
 // browser still has to hit /unlock once to get its own session cookie.
-func New(cfg *config.Config, logger *zap.Logger) *fiber.App {
+func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	app := fiber.New(fiber.Config{
 		AppName:               "MailVault",
 		DisableStartupMessage: true,
 	})
 
-	vault := &vaultState{}
+	vault := newVaultState(func(key []byte) (*backend, error) {
+		return newBackend(cfg, logger, key)
+	})
 	unlockFromEnv(cfg, logger, vault)
 
 	store := newSessionStore(cfg)
@@ -64,7 +66,7 @@ func New(cfg *config.Config, logger *zap.Logger) *fiber.App {
 		return c.SendString("MailVault is running.")
 	})
 
-	return app
+	return app, vault
 }
 
 // unlockFromEnv mirrors cmd/mailvault's own unlockMasterKey for the
@@ -91,7 +93,10 @@ func unlockFromEnv(cfg *config.Config, logger *zap.Logger, vault *vaultState) {
 		logger.Error("startup vault unlock via environment variable failed; vault remains locked", zap.Error(err))
 		return
 	}
-	vault.unlock(key)
+	if _, err := vault.unlock(key); err != nil {
+		logger.Error("startup vault unlock via environment variable failed while initializing backend; vault remains locked", zap.Error(err))
+		return
+	}
 	logger.Info("vault unlocked at startup", zap.String("source", "env"))
 }
 
@@ -100,11 +105,14 @@ func unlockFromEnv(cfg *config.Config, logger *zap.Logger, vault *vaultState) {
 // reports a deliberate shutdown, so main.go's existing
 // errors.Is(err, context.Canceled) handling applies uniformly here too.
 //
-// Shutdown itself has no separate timeout: it relies on main.go's existing
-// 30-second force-exit watchdog, the same safety net the sync engine's own
-// graceful shutdown (step 16, Phase 1) depends on.
+// Shutdown itself has no separate timeout on the HTTP layer: it relies on
+// main.go's existing 30-second force-exit watchdog, the same safety net
+// the sync engine's own graceful shutdown (step 16, Phase 1) depends on.
+// The backend (scheduler, database), if the vault was ever unlocked, gets
+// its own bounded drain (scheduler.shutdownDrainTimeout) inside that
+// window before the database is closed.
 func Serve(ctx context.Context, cfg *config.Config, logger *zap.Logger) error {
-	app := New(cfg, logger)
+	app, vault := New(cfg, logger)
 	addr := fmt.Sprintf("%s:%d", cfg.HTTP.Host, cfg.HTTP.Port)
 
 	serveErr := make(chan error, 1)
@@ -131,6 +139,9 @@ func Serve(ctx context.Context, cfg *config.Config, logger *zap.Logger) error {
 		logger.Info("http server shutting down")
 		if err := app.Shutdown(); err != nil {
 			return fmt.Errorf("httpapi: shutdown: %w", err)
+		}
+		if b := vault.currentBackend(); b != nil {
+			b.close(logger)
 		}
 		return ctx.Err()
 	}

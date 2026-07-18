@@ -45,6 +45,7 @@ type Account struct {
 	OAuth2Provider        string // "google", "microsoft", or "" for none
 	OAuth2TokenEncrypted  []byte
 	IsActive              bool
+	SyncCron              string // FR-SE-06: cron expression; "" means "use sync.default_schedule"
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
 }

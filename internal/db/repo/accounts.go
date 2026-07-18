@@ -66,7 +66,7 @@ func (r *AccountsRepo) List(ctx context.Context) ([]*domain.Account, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, email, display_name, imap_host, imap_port, imap_tls,
 		       imap_username, imap_password_encrypted,
-		       oauth2_provider, oauth2_token_encrypted, is_active,
+		       oauth2_provider, oauth2_token_encrypted, is_active, sync_cron,
 		       created_at, updated_at
 		FROM accounts ORDER BY id`)
 	if err != nil {
@@ -85,12 +85,23 @@ func (r *AccountsRepo) List(ctx context.Context) ([]*domain.Account, error) {
 	return accounts, rows.Err()
 }
 
+// GetByID returns the account with the given id, or sql.ErrNoRows.
+func (r *AccountsRepo) GetByID(ctx context.Context, id int64) (*domain.Account, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, email, display_name, imap_host, imap_port, imap_tls,
+		       imap_username, imap_password_encrypted,
+		       oauth2_provider, oauth2_token_encrypted, is_active, sync_cron,
+		       created_at, updated_at
+		FROM accounts WHERE id = ?`, id)
+	return scanAccount(row)
+}
+
 // GetByEmail returns the account with the given email, or sql.ErrNoRows.
 func (r *AccountsRepo) GetByEmail(ctx context.Context, email string) (*domain.Account, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, email, display_name, imap_host, imap_port, imap_tls,
 		       imap_username, imap_password_encrypted,
-		       oauth2_provider, oauth2_token_encrypted, is_active,
+		       oauth2_provider, oauth2_token_encrypted, is_active, sync_cron,
 		       created_at, updated_at
 		FROM accounts WHERE email = ?`, email)
 	return scanAccount(row)
@@ -106,6 +117,7 @@ func scanAccount(row rowScanner) (*domain.Account, error) {
 		a                     domain.Account
 		displayName, imapUser sql.NullString
 		oauth2Provider        sql.NullString
+		syncCron              sql.NullString
 		isActive              int
 		imapTLS               int
 		createdAt, updatedAt  string
@@ -113,7 +125,7 @@ func scanAccount(row rowScanner) (*domain.Account, error) {
 	err := row.Scan(
 		&a.ID, &a.Email, &displayName, &a.IMAPHost, &a.IMAPPort, &imapTLS,
 		&imapUser, &a.IMAPPasswordEncrypted,
-		&oauth2Provider, &a.OAuth2TokenEncrypted, &isActive,
+		&oauth2Provider, &a.OAuth2TokenEncrypted, &isActive, &syncCron,
 		&createdAt, &updatedAt,
 	)
 	if err != nil {
@@ -126,6 +138,7 @@ func scanAccount(row rowScanner) (*domain.Account, error) {
 	a.DisplayName = displayName.String
 	a.IMAPUsername = imapUser.String
 	a.OAuth2Provider = oauth2Provider.String
+	a.SyncCron = syncCron.String
 	a.IMAPTLS = domain.IMAPTLSMode(imapTLS)
 	a.IsActive = isActive != 0
 
