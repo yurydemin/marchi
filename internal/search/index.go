@@ -42,6 +42,14 @@ const (
 	// every analyzed text field, so a single free-text query can search
 	// across all of them at once.
 	FieldAll = "_all"
+
+	// FieldEmailID is a stored numeric duplicate of the document's own
+	// identifier (which Bluge stores under its own unexported "_id"
+	// field) — kept as an explicit, named field here rather than reaching
+	// into Bluge's internal field name, so search results can recover
+	// which email a hit belongs to without depending on an undocumented
+	// implementation detail.
+	FieldEmailID = "email_id"
 )
 
 // Doc is one email's worth of indexable content. From/To/Cc are the
@@ -142,14 +150,15 @@ func (idx *Index) withTimeout(fn func() error) error {
 func buildDocument(d Doc) *bluge.Document {
 	doc := bluge.NewDocument(emailIDTerm(d.EmailID))
 
+	doc.AddField(bluge.NewNumericField(FieldEmailID, float64(d.EmailID)).StoreValue())
 	doc.AddField(bluge.NewKeywordField(FieldMessageID, d.MessageID).StoreValue())
 	doc.AddField(bluge.NewTextField(FieldSubject, d.Subject).StoreValue().SearchTermPositions().HighlightMatches())
 
-	doc.AddField(bluge.NewTextField(FieldFrom, d.From))
+	doc.AddField(bluge.NewTextField(FieldFrom, d.From).StoreValue())
 	doc.AddField(bluge.NewKeywordField(FieldFromExact, orFallback(d.FromAddr, d.From)).StoreValue())
 
 	for i, to := range d.To {
-		doc.AddField(bluge.NewTextField(FieldTo, to))
+		doc.AddField(bluge.NewTextField(FieldTo, to).StoreValue())
 		exact := to
 		if i < len(d.ToAddrs) {
 			exact = d.ToAddrs[i]
@@ -157,7 +166,7 @@ func buildDocument(d Doc) *bluge.Document {
 		doc.AddField(bluge.NewKeywordField(FieldToExact, exact).StoreValue())
 	}
 	for i, cc := range d.Cc {
-		doc.AddField(bluge.NewTextField(FieldCc, cc))
+		doc.AddField(bluge.NewTextField(FieldCc, cc).StoreValue())
 		exact := cc
 		if i < len(d.CcAddrs) {
 			exact = d.CcAddrs[i]
@@ -174,7 +183,7 @@ func buildDocument(d Doc) *bluge.Document {
 	doc.AddField(bluge.NewDateTimeField(FieldDate, d.Date).StoreValue().Sortable())
 	doc.AddField(bluge.NewKeywordField(FieldAccountID, strconv.FormatInt(d.AccountID, 10)).StoreValue())
 	doc.AddField(bluge.NewKeywordField(FieldFolderID, strconv.FormatInt(d.FolderID, 10)).StoreValue())
-	doc.AddField(bluge.NewKeywordField(FieldHasAttachments, boolTerm(d.HasAttachments)).StoreValue())
+	doc.AddField(bluge.NewKeywordField(FieldHasAttachments, BoolTerm(d.HasAttachments)).StoreValue())
 	doc.AddField(bluge.NewNumericField(FieldSize, float64(d.Size)).StoreValue().Sortable())
 
 	doc.AddField(bluge.NewCompositeFieldIncluding(FieldAll,
@@ -198,9 +207,11 @@ func orFallback(addr, display string) string {
 	return display
 }
 
-// boolTerm is Bluge's own convention for indexing a boolean as a keyword
-// field: "t"/"f", not "true"/"false".
-func boolTerm(b bool) string {
+// BoolTerm is Bluge's own convention for indexing a boolean as a keyword
+// field: "t"/"f", not "true"/"false". Exported so the query builder
+// (query.go) uses the identical convention when filtering, rather than
+// risking drift between how a bool gets written and how it gets queried.
+func BoolTerm(b bool) string {
 	if b {
 		return "t"
 	}
