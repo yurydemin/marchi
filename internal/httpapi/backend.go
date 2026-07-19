@@ -18,6 +18,7 @@ import (
 	"github.com/yurydemin/marchi/internal/db/writer"
 	"github.com/yurydemin/marchi/internal/domain"
 	"github.com/yurydemin/marchi/internal/reindex"
+	"github.com/yurydemin/marchi/internal/retention"
 	"github.com/yurydemin/marchi/internal/rules"
 	"github.com/yurydemin/marchi/internal/s3config"
 	"github.com/yurydemin/marchi/internal/s3store"
@@ -57,7 +58,11 @@ type backend struct {
 	s3ConfigRepo      *repo.S3ConfigRepo
 	s3UploadQueueRepo *repo.S3UploadQueueRepo
 	s3ConfigManager   *s3config.Manager
-	manager           *account.Manager
+	// retentionSettingsRepo feeds both the Scheduler's daily retention
+	// cron (via retention.Runner) and the future Settings API for editing
+	// the global retention default (FR-RE-04).
+	retentionSettingsRepo *repo.RetentionSettingsRepo
+	manager               *account.Manager
 
 	// s3Uploader is the mirror upload queue's worker pool (FR-S3-06),
 	// started only if s3_config exists and is Enabled at unlock time —
@@ -139,24 +144,33 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 		return nil, fmt.Errorf("httpapi: initializing s3 config manager: %w", err)
 	}
 
+	retentionSettingsRepo := repo.NewRetentionSettingsRepo(sqlDB, w)
+
 	b := &backend{
-		sqlDB:             sqlDB,
-		w:                 w,
-		maildirRoot:       cfg.Storage.MaildirPath,
-		indexPath:         cfg.Search.IndexPath,
-		wsHub:             hub,
-		accountsRepo:      accountsRepo,
-		foldersRepo:       repo.NewFoldersRepo(sqlDB, w),
-		emailsRepo:        repo.NewEmailsRepo(sqlDB, w),
-		attachmentsRepo:   repo.NewAttachmentsRepo(sqlDB, w),
-		syncLogsRepo:      repo.NewSyncLogsRepo(sqlDB, w),
-		rulesRepo:         repo.NewRulesRepo(sqlDB, w),
-		s3ConfigRepo:      s3ConfigRepo,
-		s3UploadQueueRepo: repo.NewS3UploadQueueRepo(sqlDB, w),
-		s3ConfigManager:   s3ConfigMgr,
-		manager:           mgr,
-		index:             idx,
+		sqlDB:                 sqlDB,
+		w:                     w,
+		maildirRoot:           cfg.Storage.MaildirPath,
+		indexPath:             cfg.Search.IndexPath,
+		wsHub:                 hub,
+		accountsRepo:          accountsRepo,
+		foldersRepo:           repo.NewFoldersRepo(sqlDB, w),
+		emailsRepo:            repo.NewEmailsRepo(sqlDB, w),
+		attachmentsRepo:       repo.NewAttachmentsRepo(sqlDB, w),
+		syncLogsRepo:          repo.NewSyncLogsRepo(sqlDB, w),
+		rulesRepo:             repo.NewRulesRepo(sqlDB, w),
+		s3ConfigRepo:          s3ConfigRepo,
+		s3UploadQueueRepo:     repo.NewS3UploadQueueRepo(sqlDB, w),
+		s3ConfigManager:       s3ConfigMgr,
+		retentionSettingsRepo: retentionSettingsRepo,
+		manager:               mgr,
+		index:                 idx,
 	}
+
+	retentionRunner := retention.New(retention.Deps{
+		AccountsRepo: b.accountsRepo, EmailsRepo: b.emailsRepo,
+		RetentionSettingsRepo: b.retentionSettingsRepo, S3ConfigRepo: b.s3ConfigRepo,
+		S3ConfigManager: b.s3ConfigManager, Writer: b.w, IndexFunc: b.currentIndex, Logger: logger,
+	})
 
 	sched, err := scheduler.New(cfg, logger, scheduler.Deps{
 		AccountsRepo:      b.accountsRepo,
@@ -167,6 +181,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 		RulesRepo:         b.rulesRepo,
 		S3ConfigRepo:      b.s3ConfigRepo,
 		S3UploadQueueRepo: b.s3UploadQueueRepo,
+		RetentionRunner:   retentionRunner,
 		Manager:           b.manager,
 		Writer:            b.w,
 		Host:              host,

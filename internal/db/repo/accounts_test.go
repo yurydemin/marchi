@@ -285,6 +285,63 @@ func TestAccountsRepo_Delete_CascadesToEverySiblingTable(t *testing.T) {
 	}
 }
 
+func TestAccountsRepo_RetentionOverrides_RoundTripAndNilMeansInherit(t *testing.T) {
+	repo, _ := openTestRepo(t)
+	ctx := context.Background()
+
+	id, err := repo.Create(ctx, &domain.Account{
+		Email: "override@example.com", IMAPHost: "h", IMAPPort: 993, IsActive: true,
+		RetentionLocalDays: intPtr(0), RetentionMoveToS3Days: intPtr(14), RetentionS3Days: intPtr(2555),
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	a, err := repo.GetByID(ctx, id)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if a.RetentionLocalDays == nil || *a.RetentionLocalDays != 0 {
+		t.Errorf("RetentionLocalDays = %v, want 0 (evict immediately is a real, distinct-from-nil setting)", a.RetentionLocalDays)
+	}
+	if a.RetentionMoveToS3Days == nil || *a.RetentionMoveToS3Days != 14 {
+		t.Errorf("RetentionMoveToS3Days = %v, want 14", a.RetentionMoveToS3Days)
+	}
+	if a.RetentionS3Days == nil || *a.RetentionS3Days != 2555 {
+		t.Errorf("RetentionS3Days = %v, want 2555", a.RetentionS3Days)
+	}
+
+	// A second account that never sets any override must read back nil
+	// on all three — "inherit the global default", not 0.
+	id2, err := repo.Create(ctx, &domain.Account{Email: "no-override@example.com", IMAPHost: "h", IMAPPort: 993, IsActive: true})
+	if err != nil {
+		t.Fatalf("Create (no override): %v", err)
+	}
+	a2, err := repo.GetByID(ctx, id2)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if a2.RetentionLocalDays != nil || a2.RetentionMoveToS3Days != nil || a2.RetentionS3Days != nil {
+		t.Errorf("got %+v, want all three retention fields nil (no override set)", a2)
+	}
+
+	// Update can clear an override back to nil.
+	a.RetentionLocalDays = nil
+	if err := repo.Update(ctx, a); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	updated, err := repo.GetByID(ctx, id)
+	if err != nil {
+		t.Fatalf("GetByID after update: %v", err)
+	}
+	if updated.RetentionLocalDays != nil {
+		t.Errorf("RetentionLocalDays after clearing = %v, want nil", updated.RetentionLocalDays)
+	}
+	if updated.RetentionMoveToS3Days == nil || *updated.RetentionMoveToS3Days != 14 {
+		t.Errorf("RetentionMoveToS3Days after unrelated update = %v, want unchanged 14", updated.RetentionMoveToS3Days)
+	}
+}
+
 func TestAccountsRepo_ListEmpty(t *testing.T) {
 	repo, _ := openTestRepo(t)
 	accounts, err := repo.List(context.Background())

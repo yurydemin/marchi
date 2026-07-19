@@ -40,11 +40,8 @@ func sampleRule() *domain.Rule {
 				{Type: domain.ConditionSubjectContains, Value: "(?i)invoice"},
 			},
 		},
-		Action:                domain.ActionArchive,
-		RetentionLocalDays:    intPtr(30),
-		RetentionMoveToS3Days: intPtr(7),
-		RetentionS3Days:       intPtr(2555),
-		IsActive:              true,
+		Action:   domain.ActionArchive,
+		IsActive: true,
 	}
 }
 
@@ -74,42 +71,8 @@ func TestRulesRepo_CreateAndGetByID_RoundTripsConditionsTree(t *testing.T) {
 	if got.Conditions.Children[0].Type != domain.ConditionFromDomain || got.Conditions.Children[0].Value != "vendor.com" {
 		t.Errorf("Conditions.Children[0] = %+v, want from_domain=vendor.com", got.Conditions.Children[0])
 	}
-	if got.RetentionLocalDays == nil || *got.RetentionLocalDays != 30 {
-		t.Errorf("RetentionLocalDays = %v, want 30", got.RetentionLocalDays)
-	}
-	if got.RetentionMoveToS3Days == nil || *got.RetentionMoveToS3Days != 7 {
-		t.Errorf("RetentionMoveToS3Days = %v, want 7", got.RetentionMoveToS3Days)
-	}
-	if got.RetentionS3Days == nil || *got.RetentionS3Days != 2555 {
-		t.Errorf("RetentionS3Days = %v, want 2555", got.RetentionS3Days)
-	}
 	if got.CreatedAt.IsZero() {
 		t.Error("CreatedAt is zero, want a timestamp")
-	}
-}
-
-func TestRulesRepo_Create_NilRetentionFieldsStayNil(t *testing.T) {
-	repo := openTestRulesRepo(t)
-	ctx := context.Background()
-
-	rule := &domain.Rule{
-		Name:       "Skip newsletters",
-		Priority:   5,
-		Conditions: domain.RuleNode{Type: domain.ConditionSubjectContains, Value: "(?i)newsletter"},
-		Action:     domain.ActionSkip,
-		IsActive:   true,
-	}
-	id, err := repo.Create(ctx, rule)
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	got, err := repo.GetByID(ctx, id)
-	if err != nil {
-		t.Fatalf("GetByID: %v", err)
-	}
-	if got.RetentionLocalDays != nil || got.RetentionMoveToS3Days != nil || got.RetentionS3Days != nil {
-		t.Errorf("expected all retention fields nil, got %+v", got)
 	}
 }
 
@@ -191,7 +154,6 @@ func TestRulesRepo_Update(t *testing.T) {
 	rule.Priority = 99
 	rule.Action = domain.ActionSkip
 	rule.Conditions = domain.RuleNode{Type: domain.ConditionAccountIs, Value: "1"}
-	rule.RetentionLocalDays = nil
 	if err := repo.Update(ctx, rule); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -205,9 +167,6 @@ func TestRulesRepo_Update(t *testing.T) {
 	}
 	if got.Conditions.Type != domain.ConditionAccountIs || got.Conditions.Value != "1" {
 		t.Errorf("Conditions = %+v, want updated leaf", got.Conditions)
-	}
-	if got.RetentionLocalDays != nil {
-		t.Errorf("RetentionLocalDays = %v, want nil after update", got.RetentionLocalDays)
 	}
 }
 

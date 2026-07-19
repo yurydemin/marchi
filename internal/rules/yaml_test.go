@@ -38,9 +38,6 @@ rules:
   - name: vendor invoices
     priority: 10
     action: archive
-    retention_local_days: 30
-    retention_move_to_s3_days: 7
-    retention_s3_days: 2555
     conditions:
       op: and
       children:
@@ -73,15 +70,6 @@ func TestParseYAML_ValidFile(t *testing.T) {
 	}
 	if second.Conditions.Op != domain.OpAnd || len(second.Conditions.Children) != 2 {
 		t.Fatalf("second rule conditions = %+v", second.Conditions)
-	}
-	if second.RetentionLocalDays == nil || *second.RetentionLocalDays != 30 {
-		t.Errorf("RetentionLocalDays = %v, want 30", second.RetentionLocalDays)
-	}
-	if second.RetentionMoveToS3Days == nil || *second.RetentionMoveToS3Days != 7 {
-		t.Errorf("RetentionMoveToS3Days = %v, want 7", second.RetentionMoveToS3Days)
-	}
-	if second.RetentionS3Days == nil || *second.RetentionS3Days != 2555 {
-		t.Errorf("RetentionS3Days = %v, want 2555", second.RetentionS3Days)
 	}
 }
 

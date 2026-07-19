@@ -11,7 +11,10 @@ import (
 	"github.com/yurydemin/marchi/internal/domain"
 )
 
-// RulesRepo is the rules table's repository (FR-RE-01/FR-ST-03).
+// RulesRepo is the rules table's repository (FR-RE-01/FR-ST-03). Rules
+// only govern the archive/skip/mark_read dispatch decision — retention is
+// a separate concern (see repo.RetentionSettingsRepo and the accounts
+// table's own retention override columns), not a per-rule setting.
 type RulesRepo struct {
 	db *sql.DB
 	w  writer.Writer
@@ -31,13 +34,9 @@ func (r *RulesRepo) Create(ctx context.Context, rule *domain.Rule) (int64, error
 	var id int64
 	err = r.w.Do(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `
-			INSERT INTO rules (
-				name, priority, conditions_json, action,
-				retention_local_days, retention_move_to_s3_days, retention_s3_days, is_active
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			rule.Name, rule.Priority, string(conditionsJSON), string(rule.Action),
-			nullIfZeroPtr(rule.RetentionLocalDays), nullIfZeroPtr(rule.RetentionMoveToS3Days), nullIfZeroPtr(rule.RetentionS3Days),
-			boolToInt(rule.IsActive),
+			INSERT INTO rules (name, priority, conditions_json, action, is_active)
+			VALUES (?, ?, ?, ?, ?)`,
+			rule.Name, rule.Priority, string(conditionsJSON), string(rule.Action), boolToInt(rule.IsActive),
 		)
 		if err != nil {
 			return err
@@ -57,14 +56,9 @@ func (r *RulesRepo) Update(ctx context.Context, rule *domain.Rule) error {
 
 	return r.w.Do(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `
-			UPDATE rules SET
-				name = ?, priority = ?, conditions_json = ?, action = ?,
-				retention_local_days = ?, retention_move_to_s3_days = ?, retention_s3_days = ?,
-				is_active = ?
+			UPDATE rules SET name = ?, priority = ?, conditions_json = ?, action = ?, is_active = ?
 			WHERE id = ?`,
-			rule.Name, rule.Priority, string(conditionsJSON), string(rule.Action),
-			nullIfZeroPtr(rule.RetentionLocalDays), nullIfZeroPtr(rule.RetentionMoveToS3Days), nullIfZeroPtr(rule.RetentionS3Days),
-			boolToInt(rule.IsActive), rule.ID,
+			rule.Name, rule.Priority, string(conditionsJSON), string(rule.Action), boolToInt(rule.IsActive), rule.ID,
 		)
 		if err != nil {
 			return err
@@ -103,9 +97,7 @@ func (r *RulesRepo) Delete(ctx context.Context, id int64) error {
 // among equal priorities.
 func (r *RulesRepo) List(ctx context.Context) ([]*domain.Rule, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, priority, conditions_json, action,
-		       retention_local_days, retention_move_to_s3_days, retention_s3_days,
-		       is_active, created_at
+		SELECT id, name, priority, conditions_json, action, is_active, created_at
 		FROM rules ORDER BY priority ASC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("repo: listing rules: %w", err)
@@ -129,9 +121,7 @@ func (r *RulesRepo) List(ctx context.Context) ([]*domain.Rule, error) {
 // disabled rules on every message.
 func (r *RulesRepo) ListActive(ctx context.Context) ([]*domain.Rule, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, priority, conditions_json, action,
-		       retention_local_days, retention_move_to_s3_days, retention_s3_days,
-		       is_active, created_at
+		SELECT id, name, priority, conditions_json, action, is_active, created_at
 		FROM rules WHERE is_active = 1 ORDER BY priority ASC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("repo: listing active rules: %w", err)
@@ -152,24 +142,20 @@ func (r *RulesRepo) ListActive(ctx context.Context) ([]*domain.Rule, error) {
 // GetByID returns the rule with the given id, or sql.ErrNoRows.
 func (r *RulesRepo) GetByID(ctx context.Context, id int64) (*domain.Rule, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, name, priority, conditions_json, action,
-		       retention_local_days, retention_move_to_s3_days, retention_s3_days,
-		       is_active, created_at
+		SELECT id, name, priority, conditions_json, action, is_active, created_at
 		FROM rules WHERE id = ?`, id)
 	return scanRule(row)
 }
 
 func scanRule(row rowScanner) (*domain.Rule, error) {
 	var (
-		rule                                           domain.Rule
-		conditionsJSON, action                         string
-		retentionLocal, retentionMoveToS3, retentionS3 sql.NullInt64
-		isActive                                       int
-		createdAt                                      string
+		rule                   domain.Rule
+		conditionsJSON, action string
+		isActive               int
+		createdAt              string
 	)
 	err := row.Scan(
 		&rule.ID, &rule.Name, &rule.Priority, &conditionsJSON, &action,
-		&retentionLocal, &retentionMoveToS3, &retentionS3,
 		&isActive, &createdAt,
 	)
 	if err != nil {
@@ -183,9 +169,6 @@ func scanRule(row rowScanner) (*domain.Rule, error) {
 		return nil, fmt.Errorf("repo: unmarshaling rule %d conditions: %w", rule.ID, err)
 	}
 	rule.Action = domain.RuleAction(action)
-	rule.RetentionLocalDays = nullInt64ToIntPtr(retentionLocal)
-	rule.RetentionMoveToS3Days = nullInt64ToIntPtr(retentionMoveToS3)
-	rule.RetentionS3Days = nullInt64ToIntPtr(retentionS3)
 	rule.IsActive = isActive != 0
 
 	rule.CreatedAt, err = parseSQLiteTime(createdAt)
@@ -194,19 +177,4 @@ func scanRule(row rowScanner) (*domain.Rule, error) {
 	}
 
 	return &rule, nil
-}
-
-func nullIfZeroPtr(p *int) any {
-	if p == nil {
-		return nil
-	}
-	return *p
-}
-
-func nullInt64ToIntPtr(n sql.NullInt64) *int {
-	if !n.Valid {
-		return nil
-	}
-	v := int(n.Int64)
-	return &v
 }

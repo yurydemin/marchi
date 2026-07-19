@@ -23,6 +23,11 @@ type Email struct {
 	S3Key           string
 	S3ETag          string
 	S3SHA256        string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// S3OnlySince is when this email entered Stage B of the retention
+	// lifecycle (S3-only, local copy evicted) — zero if it's never left
+	// Stage A. internal/retention's Stage B->C threshold counts from this
+	// moment, not from CreatedAt.
+	S3OnlySince time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }

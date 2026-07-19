@@ -130,6 +130,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newStatusCmd())
 	root.AddCommand(newLogsCmd())
 	root.AddCommand(newReindexCmd())
+	root.AddCommand(newRetentionCmd())
 
 	return root
 }

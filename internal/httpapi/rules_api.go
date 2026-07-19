@@ -22,22 +22,18 @@ func registerRulesAPI(app *fiber.App, vault *vaultState) {
 }
 
 type ruleResponse struct {
-	ID                    int64             `json:"id"`
-	Name                  string            `json:"name"`
-	Priority              int               `json:"priority"`
-	Conditions            domain.RuleNode   `json:"conditions"`
-	Action                domain.RuleAction `json:"action"`
-	RetentionLocalDays    *int              `json:"retention_local_days,omitempty"`
-	RetentionMoveToS3Days *int              `json:"retention_move_to_s3_days,omitempty"`
-	RetentionS3Days       *int              `json:"retention_s3_days,omitempty"`
-	IsActive              bool              `json:"is_active"`
+	ID         int64             `json:"id"`
+	Name       string            `json:"name"`
+	Priority   int               `json:"priority"`
+	Conditions domain.RuleNode   `json:"conditions"`
+	Action     domain.RuleAction `json:"action"`
+	IsActive   bool              `json:"is_active"`
 }
 
 func ruleResponseFrom(r *domain.Rule) ruleResponse {
 	return ruleResponse{
 		ID: r.ID, Name: r.Name, Priority: r.Priority, Conditions: r.Conditions, Action: r.Action,
-		RetentionLocalDays: r.RetentionLocalDays, RetentionMoveToS3Days: r.RetentionMoveToS3Days,
-		RetentionS3Days: r.RetentionS3Days, IsActive: r.IsActive,
+		IsActive: r.IsActive,
 	}
 }
 
@@ -64,14 +60,11 @@ func handleListRules(vault *vaultState) fiber.Handler {
 // two, so unlike createAccountRequest/updateAccountRequest there's just
 // one shape here.
 type ruleRequest struct {
-	Name                  string          `json:"name"`
-	Priority              int             `json:"priority"`
-	Conditions            domain.RuleNode `json:"conditions"`
-	Action                string          `json:"action"`
-	RetentionLocalDays    *int            `json:"retention_local_days"`
-	RetentionMoveToS3Days *int            `json:"retention_move_to_s3_days"`
-	RetentionS3Days       *int            `json:"retention_s3_days"`
-	IsActive              bool            `json:"is_active"`
+	Name       string          `json:"name"`
+	Priority   int             `json:"priority"`
+	Conditions domain.RuleNode `json:"conditions"`
+	Action     string          `json:"action"`
+	IsActive   bool            `json:"is_active"`
 }
 
 // validate parses/checks req the same way internal/rules.ParseYAML checks
@@ -108,8 +101,7 @@ func handleCreateRule(vault *vaultState) fiber.Handler {
 
 		rule := &domain.Rule{
 			Name: req.Name, Priority: req.Priority, Conditions: req.Conditions, Action: action,
-			RetentionLocalDays: req.RetentionLocalDays, RetentionMoveToS3Days: req.RetentionMoveToS3Days,
-			RetentionS3Days: req.RetentionS3Days, IsActive: req.IsActive,
+			IsActive: req.IsActive,
 		}
 		id, err := b.rulesRepo.Create(c.Context(), rule)
 		if err != nil {
@@ -141,8 +133,7 @@ func handleUpdateRule(vault *vaultState) fiber.Handler {
 
 		rule := &domain.Rule{
 			ID: id, Name: req.Name, Priority: req.Priority, Conditions: req.Conditions, Action: action,
-			RetentionLocalDays: req.RetentionLocalDays, RetentionMoveToS3Days: req.RetentionMoveToS3Days,
-			RetentionS3Days: req.RetentionS3Days, IsActive: req.IsActive,
+			IsActive: req.IsActive,
 		}
 		if err := b.rulesRepo.Update(c.Context(), rule); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {

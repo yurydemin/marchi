@@ -67,6 +67,15 @@ type Account struct {
 	OAuth2TokenEncrypted  []byte
 	IsActive              bool
 	SyncCron              string // FR-SE-06: cron expression; "" means "use sync.default_schedule"
+	// RetentionLocalDays/RetentionMoveToS3Days/RetentionS3Days override
+	// this account's retention policy (FR-RE-04); nil means "inherit the
+	// global default" (repo.RetentionSettingsRepo), the same nil-means-
+	// inherit convention SyncCron uses for sync.default_schedule. See
+	// internal/retention's package doc for the three-stage model these
+	// three thresholds drive.
+	RetentionLocalDays    *int
+	RetentionMoveToS3Days *int
+	RetentionS3Days       *int
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
 }

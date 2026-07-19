@@ -117,7 +117,12 @@ func TestOpen_ForeignKeyCascadeWorks(t *testing.T) {
 	}
 }
 
-func TestOpen_RulesTableHasThreeRetentionColumns(t *testing.T) {
+// TestOpen_AccountsTableHasThreeRetentionOverrideColumns confirms
+// migration 000006 moved retention out of rules and onto accounts (as a
+// nullable override) plus the retention_settings singleton — see
+// internal/retention's package doc for why per-rule retention was
+// dropped in favor of this shape.
+func TestOpen_AccountsTableHasThreeRetentionOverrideColumns(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mailvault.db")
 	sqlDB, err := Open(path)
 	if err != nil {
@@ -125,9 +130,9 @@ func TestOpen_RulesTableHasThreeRetentionColumns(t *testing.T) {
 	}
 	defer sqlDB.Close()
 
-	rows, err := sqlDB.Query("PRAGMA table_info(rules)")
+	rows, err := sqlDB.Query("PRAGMA table_info(accounts)")
 	if err != nil {
-		t.Fatalf("PRAGMA table_info(rules): %v", err)
+		t.Fatalf("PRAGMA table_info(accounts): %v", err)
 	}
 	defer rows.Close()
 
@@ -150,8 +155,16 @@ func TestOpen_RulesTableHasThreeRetentionColumns(t *testing.T) {
 	}
 	for col, found := range want {
 		if !found {
-			t.Errorf("expected column %s on rules table, not found", col)
+			t.Errorf("expected column %s on accounts table, not found", col)
 		}
+	}
+
+	var retentionSettingsExists int
+	if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='retention_settings'`).Scan(&retentionSettingsExists); err != nil {
+		t.Fatalf("checking retention_settings table exists: %v", err)
+	}
+	if retentionSettingsExists == 0 {
+		t.Error("retention_settings table not found")
 	}
 }
 

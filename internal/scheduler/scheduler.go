@@ -24,9 +24,14 @@ import (
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
 	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/retention"
 	"github.com/yurydemin/marchi/internal/search"
 	syncengine "github.com/yurydemin/marchi/internal/sync"
 )
+
+// defaultRetentionCron is FR-RE-04's "ежедневно в 03:00" — used whenever
+// Deps.RetentionCron is left empty.
+const defaultRetentionCron = "0 3 * * *"
 
 // refreshInterval controls how often the scheduler re-lists accounts to
 // pick up ones added, removed, deactivated, or re-scheduled since the
@@ -58,9 +63,14 @@ type Deps struct {
 	// convention this follows.
 	S3ConfigRepo      *repo.S3ConfigRepo
 	S3UploadQueueRepo *repo.S3UploadQueueRepo
-	Manager           *account.Manager
-	Writer            writer.Writer
-	Host              string
+	// RetentionRunner, if nil, means the retention cron never runs at
+	// all — the same nil-means-off convention as RulesRepo/S3ConfigRepo
+	// above. RetentionCron overrides defaultRetentionCron if set.
+	RetentionRunner *retention.Runner
+	RetentionCron   string
+	Manager         *account.Manager
+	Writer          writer.Writer
+	Host            string
 	// IndexFunc returns the search index to use for the sync about to run,
 	// resolved fresh each time rather than captured once — so a caller
 	// that swaps its index at runtime (a live reindex, FR-SR-04) is picked
@@ -127,6 +137,18 @@ func New(cfg *config.Config, logger *zap.Logger, deps Deps) (*Scheduler, error) 
 // refreshInterval until ctx is cancelled.
 func (s *Scheduler) Start(ctx context.Context) {
 	s.refresh(ctx)
+
+	if s.deps.RetentionRunner != nil {
+		spec := s.deps.RetentionCron
+		if spec == "" {
+			spec = defaultRetentionCron
+		}
+		if _, err := s.cronSched.AddFunc(spec, func() { s.runRetention(ctx) }); err != nil {
+			s.logger.Error("scheduler: invalid retention cron expression, retention will not run automatically",
+				zap.String("cron", spec), zap.Error(err))
+		}
+	}
+
 	s.cronSched.Start()
 
 	go func() {
@@ -282,4 +304,37 @@ func (s *Scheduler) syncOne(accountID int64, jobID string) {
 		return
 	}
 	s.logger.Info("scheduler: sync completed", zap.String("email", a.Email), zap.Int("archived", archived))
+}
+
+// TriggerRetention submits an immediate, one-off retention pass onto the
+// same bounded worker pool sync uses (mirroring TriggerSync) — a manual
+// "run retention now" action (Settings UI, `mailvault retention run`
+// against a live server) shares the same concurrency cap and
+// graceful-shutdown drain as everything else this Scheduler runs.
+func (s *Scheduler) TriggerRetention() error {
+	if s.deps.RetentionRunner == nil {
+		return fmt.Errorf("scheduler: retention is not configured")
+	}
+	if err := s.pool.Submit(func() { s.runRetention(context.Background()) }); err != nil {
+		return fmt.Errorf("scheduler: submitting retention run to worker pool failed: %w", err)
+	}
+	return nil
+}
+
+// runRetention runs one retention pass and logs the outcome. Errors are
+// logged, not propagated — cron's own AddFunc has nowhere to send an
+// error, and a failed pass simply gets retried on the next scheduled tick
+// (or the next manual trigger).
+func (s *Scheduler) runRetention(ctx context.Context) {
+	s.logger.Info("scheduler: starting retention run")
+	stats, err := s.deps.RetentionRunner.Run(ctx)
+	if err != nil {
+		s.logger.Error("scheduler: retention run failed", zap.Error(err))
+		return
+	}
+	s.logger.Info("scheduler: retention run completed",
+		zap.Int("moved_to_s3_only", stats.MovedToS3Only),
+		zap.Int("deleted_direct", stats.DeletedDirect),
+		zap.Int("deleted_from_s3", stats.DeletedFromS3),
+		zap.Int("errors", stats.Errors))
 }

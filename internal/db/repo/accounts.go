@@ -46,11 +46,13 @@ func (r *AccountsRepo) Create(ctx context.Context, a *domain.Account) (int64, er
 			INSERT INTO accounts (
 				email, display_name, imap_host, imap_port, imap_tls,
 				imap_username, imap_password_encrypted,
-				oauth2_provider, oauth2_token_encrypted, is_active
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				oauth2_provider, oauth2_token_encrypted, is_active,
+				retention_local_days, retention_move_to_s3_days, retention_s3_days
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			a.Email, nullIfEmpty(a.DisplayName), a.IMAPHost, a.IMAPPort, int(a.IMAPTLS),
 			nullIfEmpty(a.IMAPUsername), a.IMAPPasswordEncrypted,
 			nullIfEmpty(a.OAuth2Provider), a.OAuth2TokenEncrypted, boolToInt(a.IsActive),
+			nullIfZeroPtr(a.RetentionLocalDays), nullIfZeroPtr(a.RetentionMoveToS3Days), nullIfZeroPtr(a.RetentionS3Days),
 		)
 		if err != nil {
 			return wrapAccountErr(err)
@@ -71,11 +73,15 @@ func (r *AccountsRepo) Update(ctx context.Context, a *domain.Account) error {
 			UPDATE accounts SET
 				display_name = ?, imap_host = ?, imap_port = ?, imap_tls = ?,
 				imap_username = ?, imap_password_encrypted = ?,
-				is_active = ?, sync_cron = ?, updated_at = CURRENT_TIMESTAMP
+				is_active = ?, sync_cron = ?,
+				retention_local_days = ?, retention_move_to_s3_days = ?, retention_s3_days = ?,
+				updated_at = CURRENT_TIMESTAMP
 			WHERE id = ?`,
 			nullIfEmpty(a.DisplayName), a.IMAPHost, a.IMAPPort, int(a.IMAPTLS),
 			nullIfEmpty(a.IMAPUsername), a.IMAPPasswordEncrypted,
-			boolToInt(a.IsActive), nullIfEmpty(a.SyncCron), a.ID,
+			boolToInt(a.IsActive), nullIfEmpty(a.SyncCron),
+			nullIfZeroPtr(a.RetentionLocalDays), nullIfZeroPtr(a.RetentionMoveToS3Days), nullIfZeroPtr(a.RetentionS3Days),
+			a.ID,
 		)
 		if err != nil {
 			return wrapAccountErr(err)
@@ -120,6 +126,7 @@ func (r *AccountsRepo) List(ctx context.Context) ([]*domain.Account, error) {
 		SELECT id, email, display_name, imap_host, imap_port, imap_tls,
 		       imap_username, imap_password_encrypted,
 		       oauth2_provider, oauth2_token_encrypted, is_active, sync_cron,
+		       retention_local_days, retention_move_to_s3_days, retention_s3_days,
 		       created_at, updated_at
 		FROM accounts ORDER BY id`)
 	if err != nil {
@@ -144,6 +151,7 @@ func (r *AccountsRepo) GetByID(ctx context.Context, id int64) (*domain.Account, 
 		SELECT id, email, display_name, imap_host, imap_port, imap_tls,
 		       imap_username, imap_password_encrypted,
 		       oauth2_provider, oauth2_token_encrypted, is_active, sync_cron,
+		       retention_local_days, retention_move_to_s3_days, retention_s3_days,
 		       created_at, updated_at
 		FROM accounts WHERE id = ?`, id)
 	return scanAccount(row)
@@ -155,6 +163,7 @@ func (r *AccountsRepo) GetByEmail(ctx context.Context, email string) (*domain.Ac
 		SELECT id, email, display_name, imap_host, imap_port, imap_tls,
 		       imap_username, imap_password_encrypted,
 		       oauth2_provider, oauth2_token_encrypted, is_active, sync_cron,
+		       retention_local_days, retention_move_to_s3_days, retention_s3_days,
 		       created_at, updated_at
 		FROM accounts WHERE email = ?`, email)
 	return scanAccount(row)
@@ -167,18 +176,20 @@ type rowScanner interface {
 
 func scanAccount(row rowScanner) (*domain.Account, error) {
 	var (
-		a                     domain.Account
-		displayName, imapUser sql.NullString
-		oauth2Provider        sql.NullString
-		syncCron              sql.NullString
-		isActive              int
-		imapTLS               int
-		createdAt, updatedAt  string
+		a                                              domain.Account
+		displayName, imapUser                          sql.NullString
+		oauth2Provider                                 sql.NullString
+		syncCron                                       sql.NullString
+		retentionLocal, retentionMoveToS3, retentionS3 sql.NullInt64
+		isActive                                       int
+		imapTLS                                        int
+		createdAt, updatedAt                           string
 	)
 	err := row.Scan(
 		&a.ID, &a.Email, &displayName, &a.IMAPHost, &a.IMAPPort, &imapTLS,
 		&imapUser, &a.IMAPPasswordEncrypted,
 		&oauth2Provider, &a.OAuth2TokenEncrypted, &isActive, &syncCron,
+		&retentionLocal, &retentionMoveToS3, &retentionS3,
 		&createdAt, &updatedAt,
 	)
 	if err != nil {
@@ -194,6 +205,9 @@ func scanAccount(row rowScanner) (*domain.Account, error) {
 	a.SyncCron = syncCron.String
 	a.IMAPTLS = domain.IMAPTLSMode(imapTLS)
 	a.IsActive = isActive != 0
+	a.RetentionLocalDays = nullInt64ToIntPtr(retentionLocal)
+	a.RetentionMoveToS3Days = nullInt64ToIntPtr(retentionMoveToS3)
+	a.RetentionS3Days = nullInt64ToIntPtr(retentionS3)
 
 	a.CreatedAt, err = parseSQLiteTime(createdAt)
 	if err != nil {
@@ -229,6 +243,26 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// nullIfZeroPtr/nullInt64ToIntPtr are the shared (SQL NULL) <-> (*int)
+// convention every nullable day-count column in this package uses
+// (accounts' retention overrides, retention_settings' defaults) — nil
+// means "no value" (SQL NULL), not the zero value 0 days, which is itself
+// a meaningful "evict immediately" setting distinct from "unset".
+func nullIfZeroPtr(p *int) any {
+	if p == nil {
+		return nil
+	}
+	return *p
+}
+
+func nullInt64ToIntPtr(n sql.NullInt64) *int {
+	if !n.Valid {
+		return nil
+	}
+	v := int(n.Int64)
+	return &v
 }
 
 func wrapAccountErr(err error) error {

@@ -105,7 +105,7 @@ func (r *EmailsRepo) GetByID(ctx context.Context, id int64) (*domain.Email, erro
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, message_id, account_id, folder_id, uid, subject, from_addr,
 		       to_addrs, cc_addrs, date, size, has_attachments, flags,
-		       storage_location, local_path, s3_key, s3_etag, s3_sha256,
+		       storage_location, local_path, s3_key, s3_etag, s3_sha256, s3_only_since,
 		       created_at, updated_at
 		FROM emails WHERE id = ?`, id)
 	return scanEmail(row)
@@ -118,7 +118,7 @@ func (r *EmailsRepo) ListAll(ctx context.Context) ([]*domain.Email, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, message_id, account_id, folder_id, uid, subject, from_addr,
 		       to_addrs, cc_addrs, date, size, has_attachments, flags,
-		       storage_location, local_path, s3_key, s3_etag, s3_sha256,
+		       storage_location, local_path, s3_key, s3_etag, s3_sha256, s3_only_since,
 		       created_at, updated_at
 		FROM emails ORDER BY id`)
 	if err != nil {
@@ -144,7 +144,7 @@ func (r *EmailsRepo) ListByAccount(ctx context.Context, accountID int64) ([]*dom
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, message_id, account_id, folder_id, uid, subject, from_addr,
 		       to_addrs, cc_addrs, date, size, has_attachments, flags,
-		       storage_location, local_path, s3_key, s3_etag, s3_sha256,
+		       storage_location, local_path, s3_key, s3_etag, s3_sha256, s3_only_since,
 		       created_at, updated_at
 		FROM emails WHERE account_id = ? ORDER BY id`, accountID)
 	if err != nil {
@@ -168,7 +168,7 @@ func (r *EmailsRepo) ListByFolder(ctx context.Context, folderID int64) ([]*domai
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, message_id, account_id, folder_id, uid, subject, from_addr,
 		       to_addrs, cc_addrs, date, size, has_attachments, flags,
-		       storage_location, local_path, s3_key, s3_etag, s3_sha256,
+		       storage_location, local_path, s3_key, s3_etag, s3_sha256, s3_only_since,
 		       created_at, updated_at
 		FROM emails WHERE folder_id = ? ORDER BY uid`, folderID)
 	if err != nil {
@@ -187,19 +187,112 @@ func (r *EmailsRepo) ListByFolder(ctx context.Context, folderID int64) ([]*domai
 	return emails, rows.Err()
 }
 
+// ListLocalDueForS3Eviction returns accountID's Stage A emails eligible
+// to move into Stage B (local copy evicted, S3-only): still stored
+// locally, archived at or before cutoff, and — critically — with a
+// confirmed S3 upload (s3_etag IS NOT NULL). That last condition is
+// brief.md §4.6's safety invariant: never evict the only copy of an email
+// before its S3 mirror is confirmed to exist, no matter how long
+// retention_move_to_s3_days says it's been.
+func (r *EmailsRepo) ListLocalDueForS3Eviction(ctx context.Context, accountID int64, cutoff time.Time) ([]*domain.Email, error) {
+	return r.queryEmails(ctx, `
+		SELECT id, message_id, account_id, folder_id, uid, subject, from_addr,
+		       to_addrs, cc_addrs, date, size, has_attachments, flags,
+		       storage_location, local_path, s3_key, s3_etag, s3_sha256, s3_only_since,
+		       created_at, updated_at
+		FROM emails
+		WHERE account_id = ? AND storage_location = 'local' AND s3_etag IS NOT NULL AND created_at <= ?
+		ORDER BY id`, accountID, formatSQLiteTime(cutoff))
+}
+
+// ListLocalDueForDirectDelete returns accountID's Stage A emails eligible
+// for outright deletion (no S3 backup to fall back to) — the path
+// retention takes when S3 mirroring isn't enabled at all, using
+// retention_local_days as the trigger instead of retention_move_to_s3_days.
+func (r *EmailsRepo) ListLocalDueForDirectDelete(ctx context.Context, accountID int64, cutoff time.Time) ([]*domain.Email, error) {
+	return r.queryEmails(ctx, `
+		SELECT id, message_id, account_id, folder_id, uid, subject, from_addr,
+		       to_addrs, cc_addrs, date, size, has_attachments, flags,
+		       storage_location, local_path, s3_key, s3_etag, s3_sha256, s3_only_since,
+		       created_at, updated_at
+		FROM emails
+		WHERE account_id = ? AND storage_location = 'local' AND created_at <= ?
+		ORDER BY id`, accountID, formatSQLiteTime(cutoff))
+}
+
+// ListS3OnlyDueForDeletion returns accountID's Stage B emails eligible
+// for Stage C (deleted entirely from S3 and SQLite) — S3-only, and it's
+// been at least retention_s3_days since s3_only_since (Stage B started).
+func (r *EmailsRepo) ListS3OnlyDueForDeletion(ctx context.Context, accountID int64, cutoff time.Time) ([]*domain.Email, error) {
+	return r.queryEmails(ctx, `
+		SELECT id, message_id, account_id, folder_id, uid, subject, from_addr,
+		       to_addrs, cc_addrs, date, size, has_attachments, flags,
+		       storage_location, local_path, s3_key, s3_etag, s3_sha256, s3_only_since,
+		       created_at, updated_at
+		FROM emails
+		WHERE account_id = ? AND storage_location = 's3' AND s3_only_since IS NOT NULL AND s3_only_since <= ?
+		ORDER BY id`, accountID, formatSQLiteTime(cutoff))
+}
+
+func (r *EmailsRepo) queryEmails(ctx context.Context, query string, args ...any) ([]*domain.Email, error) {
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("repo: querying emails: %w", err)
+	}
+	defer rows.Close()
+
+	var emails []*domain.Email
+	for rows.Next() {
+		e, err := scanEmail(rows)
+		if err != nil {
+			return nil, err
+		}
+		emails = append(emails, e)
+	}
+	return emails, rows.Err()
+}
+
+// MarkMovedToS3Only transitions an email from Stage A to Stage B: the
+// local copy is gone (LocalPath cleared), storage_location becomes 's3',
+// and s3_only_since is stamped so Stage B's own retention_s3_days
+// threshold has a starting point. Deleting the actual local file is the
+// caller's responsibility (internal/retention.Runner) — this only updates
+// bookkeeping, inside the caller's own Single-Writer transaction.
+func (r *EmailsRepo) MarkMovedToS3Only(ctx context.Context, tx *sql.Tx, emailID int64) error {
+	_, err := tx.ExecContext(ctx, `
+		UPDATE emails SET storage_location = 's3', local_path = NULL,
+		       s3_only_since = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`, emailID)
+	if err != nil {
+		return fmt.Errorf("repo: marking email %d moved to s3-only: %w", emailID, err)
+	}
+	return nil
+}
+
+// DeleteCompletely removes emailID's row (cascading to its attachments
+// via ON DELETE CASCADE). Deleting the local file, the S3 object, and the
+// search index entry are all the caller's responsibility — this is purely
+// the SQLite side, inside the caller's own Single-Writer transaction.
+func (r *EmailsRepo) DeleteCompletely(ctx context.Context, tx *sql.Tx, emailID int64) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM emails WHERE id = ?`, emailID); err != nil {
+		return fmt.Errorf("repo: deleting email %d: %w", emailID, err)
+	}
+	return nil
+}
+
 func scanEmail(rows rowScanner) (*domain.Email, error) {
 	var (
-		e                                 domain.Email
-		fromAddr, s3Key, s3ETag, s3SHA256 sql.NullString
-		toJSON, ccJSON, flagsJSON         string
-		date                              sql.NullString
-		hasAttachments                    int
-		createdAt, updatedAt              string
+		e                                            domain.Email
+		fromAddr, localPath, s3Key, s3ETag, s3SHA256 sql.NullString
+		toJSON, ccJSON, flagsJSON                    string
+		date, s3OnlySince                            sql.NullString
+		hasAttachments                               int
+		createdAt, updatedAt                         string
 	)
 	err := rows.Scan(
 		&e.ID, &e.MessageID, &e.AccountID, &e.FolderID, &e.UID, &e.Subject, &fromAddr,
 		&toJSON, &ccJSON, &date, &e.Size, &hasAttachments, &flagsJSON,
-		&e.StorageLocation, &e.LocalPath, &s3Key, &s3ETag, &s3SHA256,
+		&e.StorageLocation, &localPath, &s3Key, &s3ETag, &s3SHA256, &s3OnlySince,
 		&createdAt, &updatedAt,
 	)
 	if err != nil {
@@ -207,6 +300,7 @@ func scanEmail(rows rowScanner) (*domain.Email, error) {
 	}
 
 	e.FromAddr = fromAddr.String
+	e.LocalPath = localPath.String
 	e.S3Key = s3Key.String
 	e.S3ETag = s3ETag.String
 	e.S3SHA256 = s3SHA256.String
@@ -225,6 +319,11 @@ func scanEmail(rows rowScanner) (*domain.Email, error) {
 	if date.Valid {
 		if e.Date, err = parseSQLiteTime(date.String); err != nil {
 			return nil, fmt.Errorf("repo: parsing email date: %w", err)
+		}
+	}
+	if s3OnlySince.Valid {
+		if e.S3OnlySince, err = parseSQLiteTime(s3OnlySince.String); err != nil {
+			return nil, fmt.Errorf("repo: parsing s3_only_since: %w", err)
 		}
 	}
 	if e.CreatedAt, err = parseSQLiteTime(createdAt); err != nil {

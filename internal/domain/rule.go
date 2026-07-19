@@ -86,27 +86,20 @@ func ParseRuleAction(s string) (RuleAction, error) {
 // fetched-but-not-yet-archived message is handled (internal/rules.FirstMatch
 // picks the winning Rule; internal/sync's archiveOne applies its Action).
 //
-// RetentionLocalDays/RetentionMoveToS3Days/RetentionS3Days are nullable
-// and drive internal/retention's three-stage lifecycle (A: local+S3 → B:
-// S3-only → C: deleted): RetentionMoveToS3Days is the real eviction
-// trigger for accounts with S3 configured (gated on emails.s3_etag being
-// confirmed non-NULL — brief.md §4.6), RetentionLocalDays only applies
-// when S3 is NOT configured (direct delete, no backup exists to wait
-// for), and RetentionS3Days is the final S3+SQLite cascade-delete,
-// independent of whichever A→B path was taken. nil means "no policy at
-// that stage" (keep forever / never evict).
+// Retention is deliberately not a per-rule setting (see
+// internal/retention's package doc): it lives on a global default
+// (RetentionSettings) with an optional per-account override, both
+// evaluated fresh at retention-cron time rather than snapshotted from
+// whichever rule happened to archive a given email.
 //
 // ID and CreatedAt are database-assigned and excluded from YAML (a
 // rules.yaml file identifies a rule by Name — see internal/rules.SyncYAML).
 type Rule struct {
-	ID                    int64      `yaml:"-"`
-	Name                  string     `yaml:"name"`
-	Priority              int        `yaml:"priority"`
-	Conditions            RuleNode   `yaml:"conditions"`
-	Action                RuleAction `yaml:"action"`
-	RetentionLocalDays    *int       `yaml:"retention_local_days,omitempty"`
-	RetentionMoveToS3Days *int       `yaml:"retention_move_to_s3_days,omitempty"`
-	RetentionS3Days       *int       `yaml:"retention_s3_days,omitempty"`
-	IsActive              bool       `yaml:"is_active"`
-	CreatedAt             time.Time  `yaml:"-"`
+	ID         int64      `yaml:"-"`
+	Name       string     `yaml:"name"`
+	Priority   int        `yaml:"priority"`
+	Conditions RuleNode   `yaml:"conditions"`
+	Action     RuleAction `yaml:"action"`
+	IsActive   bool       `yaml:"is_active"`
+	CreatedAt  time.Time  `yaml:"-"`
 }
