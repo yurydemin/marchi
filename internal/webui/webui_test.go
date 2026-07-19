@@ -17,6 +17,12 @@ type testStats struct {
 	TotalAccounts     int
 	ActiveAccounts    int
 	LocalStorageBytes int64
+	S3StorageBytes    int64
+	S3Configured      bool
+	S3Enabled         bool
+	S3QueuePending    int
+	S3QueueUploading  int
+	S3QueueFailed     int
 	Accounts          []testAccountStats
 }
 

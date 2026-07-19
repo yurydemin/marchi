@@ -66,6 +66,20 @@ func NewClient(opts Options) (*Client, error) {
 	return &Client{s3: s3.New(s3Opts), bucket: opts.Bucket}, nil
 }
 
+// Ping confirms the configured bucket is reachable and accessible with
+// the current credentials, without creating anything — the safe
+// test-connection check for a real, user-owned bucket. Unlike
+// EnsureBucket (which the MinIO test harness relies on to provision a
+// fresh bucket), Ping never issues CreateBucket: silently creating a
+// bucket in someone's real S3 account as a side effect of "test
+// connection" would be a surprising, unwanted mutation.
+func (c *Client) Ping(ctx context.Context) error {
+	if _, err := c.s3.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(c.bucket)}); err != nil {
+		return fmt.Errorf("s3store: bucket %q not reachable: %w", c.bucket, err)
+	}
+	return nil
+}
+
 // EnsureBucket creates the configured bucket if it doesn't already exist.
 // MinIO (unlike real AWS S3, where buckets are provisioned out-of-band)
 // requires this for a freshly started test container; it's harmless

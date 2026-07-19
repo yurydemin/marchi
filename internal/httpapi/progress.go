@@ -8,6 +8,17 @@ import (
 	syncengine "github.com/yurydemin/marchi/internal/sync"
 )
 
+// s3UploadErrorWSEvent builds a standalone (non-progress-sequence)
+// notification for one failed mirror upload attempt (FR-S3-06: "WebSocket-
+// уведомления об ошибках загрузки"). Done is always true — there's no
+// multi-step job this belongs to, each failed attempt is its own event.
+func s3UploadErrorWSEvent(item *domain.S3UploadQueueItem, uploadErr error) wsEvent {
+	return wsEvent{
+		Type: "s3_upload_error", Done: true,
+		Message: fmt.Sprintf("s3 mirror upload failed (attempt %d): %s: %s", item.RetryCount+1, item.S3Key, uploadErr.Error()),
+	}
+}
+
 // syncWSEvent builds one wsEvent from a syncengine.Progress update
 // (FR-SE-07). done is set on the final event for a job, with errMsg
 // (empty on success) folded into the human-readable Message.

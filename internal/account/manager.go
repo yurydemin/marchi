@@ -15,9 +15,25 @@ import (
 )
 
 // credentialSubkeyInfo scopes the HKDF subkey used for encrypting IMAP
-// passwords / OAuth2 tokens, independent of the S3 client-side-encryption
-// subkey (FR-ST-05: one Master Key, non-interchangeable derived keys).
+// passwords / OAuth2 tokens / S3 access & secret keys, independent of the
+// S3 client-side-object-encryption subkey internal/s3store derives under
+// its own label (FR-ST-05: one Master Key, non-interchangeable derived
+// keys per use case). Every kind of "credential" this app stores shares
+// this one subkey — see CredentialSubkey.
 const credentialSubkeyInfo = "credential-encryption"
+
+// CredentialSubkey derives the shared credential-encryption subkey from
+// masterKey — exported so internal/s3config can encrypt/decrypt S3 access
+// and secret keys under the exact same subkey Manager uses for IMAP
+// passwords, without duplicating the "credential-encryption" label in a
+// second place that could drift out of sync.
+func CredentialSubkey(masterKey []byte) ([]byte, error) {
+	key, err := crypto.DeriveSubkey(masterKey, credentialSubkeyInfo)
+	if err != nil {
+		return nil, fmt.Errorf("account: deriving credential subkey: %w", err)
+	}
+	return key, nil
+}
 
 // Manager wraps AccountsRepo with the credential-encryption subkey derived
 // once from the unlocked Master Key.
@@ -30,9 +46,9 @@ type Manager struct {
 // this once per unlock, after internal/security/masterkey has produced the
 // Master Key.
 func NewManager(accountsRepo *repo.AccountsRepo, masterKey []byte) (*Manager, error) {
-	key, err := crypto.DeriveSubkey(masterKey, credentialSubkeyInfo)
+	key, err := CredentialSubkey(masterKey)
 	if err != nil {
-		return nil, fmt.Errorf("account: deriving credential subkey: %w", err)
+		return nil, err
 	}
 	return &Manager{repo: accountsRepo, key: key}, nil
 }

@@ -17,11 +17,21 @@
   </div>
   <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
     <div class="text-xs font-medium uppercase tracking-wide text-slate-500">S3 storage</div>
+    {{if .Stats.S3Configured}}
+    <div class="mt-1 text-2xl font-semibold">{{humanBytes .Stats.S3StorageBytes}}</div>
+    <div class="mt-1 text-xs text-slate-400">{{if .Stats.S3Enabled}}Enabled{{else}}Configured, disabled{{end}}</div>
+    {{else}}
     <div class="mt-1 text-lg font-medium text-slate-400">Not configured</div>
+    {{end}}
   </div>
   <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
     <div class="text-xs font-medium uppercase tracking-wide text-slate-500">S3 upload queue</div>
+    {{if .Stats.S3Configured}}
+    <div class="mt-1 text-2xl font-semibold">{{.Stats.S3QueuePending}}<span class="text-base font-normal text-slate-400"> pending</span></div>
+    <div class="mt-1 text-xs text-slate-400">{{.Stats.S3QueueUploading}} uploading, {{.Stats.S3QueueFailed}} failed</div>
+    {{else}}
     <div class="mt-1 text-lg font-medium text-slate-400">Not configured</div>
+    {{end}}
   </div>
 </div>
 
