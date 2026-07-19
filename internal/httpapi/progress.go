@@ -61,6 +61,27 @@ func reindexWSEvent(jobID string, s reindex.Stats, done bool, errMsg string) wsE
 	}
 }
 
+// restoreWSEvent builds one wsEvent for a restore batch's progress
+// (FR-RS-01's bulk restore, FR-API-03's WS progress). processed counts
+// every email attempted so far (succeeded+failed), reusing the generic
+// Processed/Errors fields sync/reindex progress already use — failed
+// here means restore_logs already has a "failed" row for it, not that
+// this event itself represents an error in the batch machinery.
+func restoreWSEvent(jobID string, processed, total, succeeded, failed int, done bool, lastErrMsg string) wsEvent {
+	percent := percentOf(processed, total)
+	msg := fmt.Sprintf("restore: %d/%d processed, %d succeeded, %d failed", processed, total, succeeded, failed)
+	if done {
+		percent = 100
+		msg = fmt.Sprintf("restore completed: %d succeeded, %d failed", succeeded, failed)
+	} else if lastErrMsg != "" {
+		msg = fmt.Sprintf("restore: %d/%d processed, %d succeeded, %d failed (latest: %s)", processed, total, succeeded, failed, lastErrMsg)
+	}
+	return wsEvent{
+		Type: "restore", JobID: jobID, ProgressPercent: percent, Message: msg, Done: done,
+		Total: total, Processed: processed, Succeeded: succeeded, Failed: failed,
+	}
+}
+
 func percentOf(done, total int) float64 {
 	if total <= 0 {
 		return 0

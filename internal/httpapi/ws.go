@@ -14,7 +14,7 @@ import (
 // specifically (FR-SE-07: "текущий UID, всего писем, скорость, ошибки")
 // — harmless extra fields for any client only reading the base envelope.
 type wsEvent struct {
-	Type            string  `json:"type"` // "sync" | "reindex" | "s3_upload_error"
+	Type            string  `json:"type"` // "sync" | "reindex" | "s3_upload_error" | "restore"
 	JobID           string  `json:"job_id"`
 	ProgressPercent float64 `json:"progress_percent"`
 	Message         string  `json:"message"`
@@ -28,6 +28,8 @@ type wsEvent struct {
 	Archived     int    `json:"archived,omitempty"`
 	Indexed      int    `json:"indexed,omitempty"`
 	Errors       int    `json:"errors,omitempty"`
+	Succeeded    int    `json:"succeeded,omitempty"` // restore only
+	Failed       int    `json:"failed,omitempty"`    // restore only
 }
 
 // wsHub fans a wsEvent out to every currently-connected /ws client.

@@ -18,6 +18,7 @@ import (
 	"github.com/yurydemin/marchi/internal/db/writer"
 	"github.com/yurydemin/marchi/internal/domain"
 	"github.com/yurydemin/marchi/internal/reindex"
+	"github.com/yurydemin/marchi/internal/restore"
 	"github.com/yurydemin/marchi/internal/retention"
 	"github.com/yurydemin/marchi/internal/rules"
 	"github.com/yurydemin/marchi/internal/s3config"
@@ -62,6 +63,7 @@ type backend struct {
 	// cron (via retention.Runner) and the future Settings API for editing
 	// the global retention default (FR-RE-04).
 	retentionSettingsRepo *repo.RetentionSettingsRepo
+	restoreLogsRepo       *repo.RestoreLogsRepo
 	manager               *account.Manager
 
 	// s3Uploader is the mirror upload queue's worker pool (FR-S3-06),
@@ -73,6 +75,12 @@ type backend struct {
 	// against how rarely S3 settings actually change once configured.
 	s3Uploader     *s3store.Uploader
 	stopS3Uploader context.CancelFunc
+
+	// lazyLoader serves S3-resident emails (FR-S3-07/FR-RS-03) — nil,
+	// same as s3Uploader, whenever S3 isn't enabled at unlock time. Built
+	// alongside s3Uploader in startS3Components since both need the same
+	// decrypted credentials and S3 client.
+	lazyLoader *s3store.LazyLoader
 
 	// indexMu guards index itself (not the index's own internal state):
 	// a live reindex (FR-SR-04's admin endpoint) closes the current index
@@ -162,6 +170,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 		s3UploadQueueRepo:     repo.NewS3UploadQueueRepo(sqlDB, w),
 		s3ConfigManager:       s3ConfigMgr,
 		retentionSettingsRepo: retentionSettingsRepo,
+		restoreLogsRepo:       repo.NewRestoreLogsRepo(sqlDB, w),
 		manager:               mgr,
 		index:                 idx,
 	}
@@ -214,25 +223,27 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 
 	s3UploaderCtx, stopS3Uploader := context.WithCancel(context.Background())
 	b.stopS3Uploader = stopS3Uploader
-	b.startS3Uploader(s3UploaderCtx, cfg, logger, masterKey)
+	b.startS3Components(s3UploaderCtx, cfg, logger, masterKey)
 
 	logger.Info("backend initialized: database opened, scheduler started")
 	return b, nil
 }
 
-// startS3Uploader starts the mirror upload queue's worker pool
-// (FR-S3-06) if s3_config exists and is Enabled — see the doc comment on
-// backend.s3Uploader for why this only happens once, at unlock time, not
-// on every Settings API change. Any failure here (no config yet, bad
-// credentials, unreachable endpoint) is logged and otherwise harmless:
-// mirroring simply stays off, exactly as if S3 had never been configured
-// — enqueued rows just accumulate in s3_upload_queue until an uploader
-// does start draining them.
-func (b *backend) startS3Uploader(ctx context.Context, cfg *config.Config, logger *zap.Logger, masterKey []byte) {
+// startS3Components starts the mirror upload queue's worker pool
+// (FR-S3-06) and the lazy-load cache (FR-S3-07, used by restore and any
+// future S3-resident email viewing) if s3_config exists and is Enabled —
+// see the doc comment on backend.s3Uploader for why this only happens
+// once, at unlock time, not on every Settings API change. Any failure
+// here (no config yet, bad credentials, unreachable endpoint) is logged
+// and otherwise harmless: both stay off, exactly as if S3 had never been
+// configured — mirror uploads simply accumulate unclaimed in
+// s3_upload_queue, and restoring an S3-resident email fails with a clear
+// "S3 not configured" error instead of a lazy load.
+func (b *backend) startS3Components(ctx context.Context, cfg *config.Config, logger *zap.Logger, masterKey []byte) {
 	s3cfg, err := b.s3ConfigManager.Get(context.Background())
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			logger.Warn("httpapi: loading s3 config failed, mirror uploader not started", zap.Error(err))
+			logger.Warn("httpapi: loading s3 config failed, s3 mirroring/restore not available", zap.Error(err))
 		}
 		return
 	}
@@ -242,7 +253,7 @@ func (b *backend) startS3Uploader(ctx context.Context, cfg *config.Config, logge
 
 	accessKey, secretKey, err := b.s3ConfigManager.DecryptCredentials(s3cfg)
 	if err != nil {
-		logger.Warn("httpapi: decrypting s3 credentials failed, mirror uploader not started", zap.Error(err))
+		logger.Warn("httpapi: decrypting s3 credentials failed, s3 mirroring/restore not available", zap.Error(err))
 		return
 	}
 
@@ -252,7 +263,7 @@ func (b *backend) startS3Uploader(ctx context.Context, cfg *config.Config, logge
 		PathStyle: s3cfg.PathStyle, TLSSkipVerify: s3cfg.TLSSkipVerify,
 	})
 	if err != nil {
-		logger.Warn("httpapi: building s3 client failed, mirror uploader not started", zap.Error(err))
+		logger.Warn("httpapi: building s3 client failed, s3 mirroring/restore not available", zap.Error(err))
 		return
 	}
 
@@ -265,7 +276,16 @@ func (b *backend) startS3Uploader(ctx context.Context, cfg *config.Config, logge
 	})
 	uploader.Start(ctx)
 	b.s3Uploader = uploader
-	logger.Info("httpapi: s3 mirror uploader started", zap.String("bucket", s3cfg.Bucket))
+
+	maxBytes := int64(cfg.Storage.Cache.MaxSizeGB) * 1024 * 1024 * 1024
+	cache, err := s3store.NewCache(cfg.Storage.Cache.Path, maxBytes)
+	if err != nil {
+		logger.Warn("httpapi: building s3 lazy-load cache failed, restoring s3-resident emails not available", zap.Error(err))
+	} else {
+		b.lazyLoader = &s3store.LazyLoader{Client: client, Cache: cache, MasterKey: masterKey}
+	}
+
+	logger.Info("httpapi: s3 mirroring and lazy-load restore available", zap.String("bucket", s3cfg.Bucket))
 }
 
 // currentIndex returns the search index currently in use. Every consumer
@@ -327,6 +347,45 @@ func (b *backend) runReindexAsync(jobID string) {
 			errMsg = err.Error()
 		}
 		b.wsHub.broadcast(reindexWSEvent(jobID, stats, true, errMsg))
+	}()
+}
+
+// runRestoreAsync restores each of emailIDs into targetAccountID's
+// targetFolder in order, broadcasting progress after every attempt and a
+// final summary when the whole batch is done (FR-RS-01's bulk restore +
+// FR-API-03's WS progress) — the same detached-background-job shape as
+// runReindexAsync, tracked in bgJobs the same way. One email's failure
+// (already recorded in restore_logs by RestoreOne itself) doesn't stop
+// the rest of the batch.
+func (b *backend) runRestoreAsync(jobID string, emailIDs []int64, targetAccountID int64, targetFolder string) {
+	b.bgJobs.Add(1)
+	go func() {
+		defer b.bgJobs.Done()
+		restorer := restore.New(restore.Deps{
+			EmailsRepo: b.emailsRepo, AccountsRepo: b.accountsRepo,
+			RestoreLogsRepo: b.restoreLogsRepo, Manager: b.manager, LazyLoader: b.lazyLoader,
+		})
+
+		total := len(emailIDs)
+		succeeded, failed := 0, 0
+		ctx := context.Background()
+		for i, emailID := range emailIDs {
+			log, err := restorer.RestoreOne(ctx, emailID, targetAccountID, targetFolder)
+			switch {
+			case err != nil:
+				failed++
+				b.wsHub.broadcast(restoreWSEvent(jobID, i+1, total, succeeded, failed, false,
+					fmt.Sprintf("email %d: %v", emailID, err)))
+			case log.Status == domain.RestoreStatusCompleted:
+				succeeded++
+				b.wsHub.broadcast(restoreWSEvent(jobID, i+1, total, succeeded, failed, false, ""))
+			default:
+				failed++
+				b.wsHub.broadcast(restoreWSEvent(jobID, i+1, total, succeeded, failed, false,
+					fmt.Sprintf("email %d: %s", emailID, log.ErrorMsg)))
+			}
+		}
+		b.wsHub.broadcast(restoreWSEvent(jobID, total, total, succeeded, failed, true, ""))
 	}()
 }
 
