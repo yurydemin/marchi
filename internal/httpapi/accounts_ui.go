@@ -95,10 +95,22 @@ func renderAccountRows(c *fiber.Ctx, b *backend, pages map[string]*template.Temp
 
 // handleAccountsCreate mirrors handleCreateAccount (accounts.go) but
 // speaks HTML fragments instead of JSON: on success it returns the whole
-// refreshed row list (see renderAccountRows) plus an out-of-band swap
-// that clears the form; on failure it retargets the response to the
-// form's error slot via HX-Retarget/HX-Reswap instead of rendering an
-// error message as if it were a table row.
+// refreshed row list (see renderAccountRows); on failure it retargets the
+// response to the form's error slot via HX-Retarget/HX-Reswap instead of
+// rendering an error message as if it were a table row.
+//
+// This response deliberately does NOT also re-render/reset #add-account-form
+// via an htmx out-of-band swap — it used to (wrapped in a
+// <div id="add-account-form" hx-swap-oob="true"> matching the form's own
+// id), but that broke every submit after the first: hx-target here is
+// #accounts-tbody (a <tbody>), and HTML5's table-parsing insertion mode
+// foster-parents anything that isn't valid <tbody> content — a <form>,
+// most of all — right out of the response being parsed for that swap,
+// corrupting it regardless of the OOB id trickery (confirmed live: the
+// form ended up with zero children and every input orphaned outside any
+// <form> element after a second create). Resetting the form is app.js's
+// job instead (see its htmx:afterRequest listener for #add-account-form),
+// entirely client-side — no extra request, no table-parsing minefield.
 func handleAccountsCreate(vault *vaultState, store *session.Store, pages map[string]*template.Template) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		b, err := requireUnlockedSession(c, vault, store)
@@ -124,10 +136,7 @@ func handleAccountsCreate(vault *vaultState, store *session.Store, pages map[str
 			return fragmentError(c, pages, fiber.StatusBadRequest, err.Error())
 		}
 
-		if err := renderAccountRows(c, b, pages); err != nil {
-			return err
-		}
-		return pages["accounts"].ExecuteTemplate(c, "add-account-form-oob", nil)
+		return renderAccountRows(c, b, pages)
 	}
 }
 

@@ -43,6 +43,15 @@ new <tr> landed outside any <table>, which browsers silently mangle.
 {{end}}
 {{end}}
 
+{{/*
+add-account-form's response (POST /accounts, handleAccountsCreate)
+targets #accounts-tbody, so its own hx-swap can only ever carry pure <tr>
+content back — HTML5's table-parsing insertion mode foster-parents a
+<form> right out of a <tbody>-targeted swap, corrupting it. So unlike an
+earlier version of this template, the form is never re-rendered by the
+server after a submit; app.js resets it client-side instead (see its
+htmx:afterRequest listener for #add-account-form).
+*/}}
 {{define "add-account-form"}}
 <form id="add-account-form" hx-post="/accounts" hx-target="#accounts-tbody" hx-swap="innerHTML">
   <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -81,12 +90,6 @@ new <tr> landed outside any <table>, which browsers silently mangle.
   </div>
   <button class="mt-4 rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700" type="submit">Add account</button>
 </form>
-{{end}}
-
-{{define "add-account-form-oob"}}
-<div id="add-account-form" hx-swap-oob="true">
-  {{template "add-account-form" .}}
-</div>
 {{end}}
 
 {{define "account-row"}}

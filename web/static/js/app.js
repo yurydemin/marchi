@@ -26,6 +26,21 @@ document.addEventListener("htmx:afterRequest", function (evt) {
   }
 });
 
+// handleAccountsCreate's response is pure <tr> content for #accounts-tbody
+// — see its own doc comment (accounts_ui.go) for why it can never also
+// carry a re-rendered <form>: HTML5's table-parsing insertion mode
+// foster-parents a <form> right out of a <tbody>-targeted swap,
+// corrupting it. So resetting #add-account-form back to empty after a
+// successful create is this listener's job instead, entirely
+// client-side — no extra request, no table-parsing minefield.
+document.addEventListener("htmx:afterRequest", function (evt) {
+  const form = evt.detail.elt;
+  if (!form || form.id !== "add-account-form" || !evt.detail.successful) {
+    return;
+  }
+  form.reset();
+});
+
 // --- Rules page: AND/OR condition-tree builder -----------------------
 //
 // A rule's conditions are an arbitrarily nested tree (internal/rules.
