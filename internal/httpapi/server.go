@@ -102,6 +102,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	registerPages(app, vault, store, pages)
 	registerAccountsPage(app, vault, store, pages)
 	registerArchivePage(app, vault, store, pages)
+	registerRulesPage(app, vault, store, pages)
 
 	return app, vault
 }
