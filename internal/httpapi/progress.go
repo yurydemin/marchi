@@ -82,6 +82,25 @@ func restoreWSEvent(jobID string, processed, total, succeeded, failed int, done 
 	}
 }
 
+// exportWSEvent builds one wsEvent for a bulk .zip export's progress
+// (Phase 3 step 15). processed counts every email attempted so far
+// (written into the zip or failed), reusing the generic Processed/Errors
+// fields sync/reindex/restore progress already use.
+func exportWSEvent(jobID string, processed, total, errCount int, done bool, lastErrMsg string) wsEvent {
+	percent := percentOf(processed, total)
+	msg := fmt.Sprintf("export: %d/%d processed, %d errors", processed, total, errCount)
+	if done {
+		percent = 100
+		msg = fmt.Sprintf("export completed: %d/%d, %d errors", total, total, errCount)
+	} else if lastErrMsg != "" {
+		msg = fmt.Sprintf("export: %d/%d processed, %d errors (latest: %s)", processed, total, errCount, lastErrMsg)
+	}
+	return wsEvent{
+		Type: "export", JobID: jobID, ProgressPercent: percent, Message: msg, Done: done,
+		Total: total, Processed: processed, Errors: errCount,
+	}
+}
+
 func percentOf(done, total int) float64 {
 	if total <= 0 {
 		return 0

@@ -14,7 +14,7 @@ import (
 // specifically (FR-SE-07: "текущий UID, всего писем, скорость, ошибки")
 // — harmless extra fields for any client only reading the base envelope.
 type wsEvent struct {
-	Type            string  `json:"type"` // "sync" | "reindex" | "s3_upload_error" | "restore"
+	Type            string  `json:"type"` // "sync" | "reindex" | "s3_upload_error" | "restore" | "export"
 	JobID           string  `json:"job_id"`
 	ProgressPercent float64 `json:"progress_percent"`
 	Message         string  `json:"message"`

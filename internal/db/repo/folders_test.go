@@ -2,6 +2,8 @@ package repo
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -115,6 +117,34 @@ func TestUpsertFolder_ChangedUIDValidityResetsLastUID(t *testing.T) {
 	}
 	if f.LastUID != 0 {
 		t.Errorf("LastUID = %d, want 0 reset (UIDVALIDITY changed, FR-SE-02 full resync)", f.LastUID)
+	}
+}
+
+func TestFoldersRepo_GetByID(t *testing.T) {
+	folders, accounts := openTestFoldersRepo(t)
+	accountID := mustCreateAccount(t, accounts)
+	ctx := context.Background()
+
+	created, err := folders.UpsertFolder(ctx, accountID, "INBOX", 100)
+	if err != nil {
+		t.Fatalf("UpsertFolder: %v", err)
+	}
+
+	got, err := folders.GetByID(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.FolderName != "INBOX" || got.AccountID != accountID {
+		t.Errorf("got = %+v, want FolderName=INBOX AccountID=%d", got, accountID)
+	}
+}
+
+func TestFoldersRepo_GetByID_NotFound(t *testing.T) {
+	folders, _ := openTestFoldersRepo(t)
+
+	_, err := folders.GetByID(context.Background(), 999999)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("err = %v, want sql.ErrNoRows", err)
 	}
 }
 

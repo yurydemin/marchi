@@ -94,6 +94,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	registerS3Settings(app, vault)
 	registerOAuth2Settings(app, vault)
 	registerRestoreAPI(app, vault)
+	registerExport(app, vault)
 	registerStats(app, vault)
 	registerLogs(app, vault)
 	registerAdmin(app, vault)

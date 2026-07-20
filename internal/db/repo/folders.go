@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/yurydemin/marchi/internal/db/writer"
@@ -67,6 +68,24 @@ func (r *FoldersRepo) UpdateLastUID(ctx context.Context, tx *sql.Tx, folderID in
 		return fmt.Errorf("repo: updating folder %d last_uid: %w", folderID, err)
 	}
 	return nil
+}
+
+// GetByID returns one folder by id, or sql.ErrNoRows.
+func (r *FoldersRepo) GetByID(ctx context.Context, id int64) (*domain.Folder, error) {
+	var f domain.Folder
+	var syncEnabled int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id, account_id, folder_name, uidvalidity, last_uid, sync_enabled
+		FROM folders WHERE id = ?`, id,
+	).Scan(&f.ID, &f.AccountID, &f.FolderName, &f.UIDValidity, &f.LastUID, &syncEnabled)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("repo: getting folder %d: %w", id, err)
+	}
+	f.SyncEnabled = syncEnabled != 0
+	return &f, nil
 }
 
 // ListByAccount returns every folder recorded for accountID, alphabetically.
