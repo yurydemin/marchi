@@ -82,6 +82,31 @@ func TestConnect_ContextCancelled_FailsDial(t *testing.T) {
 	}
 }
 
+func TestConnect_OAuth2_Success_AuthenticatesViaXOAUTH2(t *testing.T) {
+	addr := startFakePlaintextIMAPServer(t, fakeServerBehavior{xoauth2: &xoauth2Behavior{ok: true}})
+	host, port := splitHostPort(t, addr)
+
+	c, err := Connect(context.Background(), ConnectOptions{
+		Host: host, Port: port, TLS: domain.IMAPTLSNone,
+		Username: "user@gmail.com", OAuth2AccessToken: "ya29.valid-token", DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer c.Logout()
+}
+
+func TestConnect_OAuth2_RejectedToken_IsStageLogin(t *testing.T) {
+	addr := startFakePlaintextIMAPServer(t, fakeServerBehavior{xoauth2: &xoauth2Behavior{ok: false}})
+	host, port := splitHostPort(t, addr)
+
+	_, err := Connect(context.Background(), ConnectOptions{
+		Host: host, Port: port, TLS: domain.IMAPTLSNone,
+		Username: "user@gmail.com", OAuth2AccessToken: "ya29.expired-token", DialTimeout: 5 * time.Second,
+	})
+	assertStage(t, err, StageLogin)
+}
+
 func TestListFolders(t *testing.T) {
 	addr := startFakePlaintextIMAPServer(t, fakeServerBehavior{
 		loginOK: true,

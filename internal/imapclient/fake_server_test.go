@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"math/big"
@@ -23,6 +24,18 @@ import (
 type fakeServerBehavior struct {
 	loginOK       bool
 	listResponses []string // raw untagged lines sent before the tagged LIST completion
+
+	// xoauth2 controls how AUTHENTICATE XOAUTH2 is handled. Unset (nil)
+	// means the mechanism isn't exercised by a given test.
+	xoauth2 *xoauth2Behavior
+}
+
+// xoauth2Behavior configures the fake server's AUTHENTICATE XOAUTH2
+// handling, modeling Google's real two-step failure protocol (a JSON
+// error challenge, answered by an empty response, before the tagged NO)
+// so xoauth2SASLClient.Next gets genuinely exercised, not just Start.
+type xoauth2Behavior struct {
+	ok bool
 }
 
 // startFakePlaintextIMAPServer starts a minimal plaintext IMAP responder
@@ -85,6 +98,12 @@ func serveFakeConn(conn net.Conn, b fakeServerBehavior) {
 		upper := strings.ToUpper(line)
 
 		switch {
+		case strings.Contains(upper, "CAPABILITY"):
+			fmt.Fprint(w, "* CAPABILITY IMAP4rev1 AUTH=XOAUTH2\r\n")
+			fmt.Fprintf(w, "%s OK CAPABILITY completed\r\n", tag)
+			w.Flush()
+		case strings.Contains(upper, " AUTHENTICATE XOAUTH2"):
+			handleFakeXOAUTH2(w, r, tag, b.xoauth2)
 		case strings.Contains(upper, " LOGIN "):
 			if b.loginOK {
 				fmt.Fprintf(w, "%s OK LOGIN completed\r\n", tag)
@@ -107,6 +126,37 @@ func serveFakeConn(conn net.Conn, b fakeServerBehavior) {
 			w.Flush()
 		}
 	}
+}
+
+// handleFakeXOAUTH2 drives the AUTHENTICATE XOAUTH2 continuation exchange:
+// request the initial response, then either accept it or walk through
+// Google's real two-step failure protocol (error challenge, empty reply,
+// tagged NO) so xoauth2SASLClient's Next path is exercised end to end.
+func handleFakeXOAUTH2(w *bufio.Writer, r *bufio.Reader, tag string, cfg *xoauth2Behavior) {
+	fmt.Fprint(w, "+ \r\n")
+	w.Flush()
+
+	irLine, err := r.ReadString('\n')
+	if err != nil {
+		return
+	}
+	_, _ = base64.StdEncoding.DecodeString(strings.TrimSpace(irLine))
+
+	if cfg != nil && cfg.ok {
+		fmt.Fprintf(w, "%s OK AUTHENTICATE completed\r\n", tag)
+		w.Flush()
+		return
+	}
+
+	errJSON := base64.StdEncoding.EncodeToString([]byte(`{"status":"400","schemes":"bearer","scope":"https://mail.google.com/"}`))
+	fmt.Fprintf(w, "+ %s\r\n", errJSON)
+	w.Flush()
+
+	if _, err := r.ReadString('\n'); err != nil {
+		return
+	}
+	fmt.Fprintf(w, "%s NO [AUTHENTICATIONFAILED] Invalid credentials\r\n", tag)
+	w.Flush()
 }
 
 // generateSelfSignedCert builds an in-memory self-signed cert for

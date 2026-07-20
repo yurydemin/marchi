@@ -56,15 +56,20 @@ func (e *ConnectError) Unwrap() error { return e.Err }
 // DefaultDialTimeout is used when ConnectOptions.DialTimeout is zero.
 const DefaultDialTimeout = 30 * time.Second
 
-// ConnectOptions describes how to reach and authenticate to an IMAP account.
-// Plain password only — OAuth2 is Phase 3 (FR-AM-01's OAuth2 accounts).
+// ConnectOptions describes how to reach and authenticate to an IMAP
+// account. Exactly one of Password or OAuth2AccessToken should be set —
+// Password logs in via plain LOGIN, OAuth2AccessToken authenticates via
+// SASL XOAUTH2 (FR-AM-01's OAuth2 accounts, Phase 3 step 13). Refreshing
+// an expired token before it gets here is the caller's job
+// (account.Manager.ResolveIMAPAuth).
 type ConnectOptions struct {
-	Host        string
-	Port        int
-	TLS         domain.IMAPTLSMode
-	Username    string
-	Password    string
-	DialTimeout time.Duration
+	Host              string
+	Port              int
+	TLS               domain.IMAPTLSMode
+	Username          string
+	Password          string
+	OAuth2AccessToken string
+	DialTimeout       time.Duration
 }
 
 // Connect dials opts.Host:opts.Port, negotiates TLS per opts.TLS, and logs
@@ -116,9 +121,16 @@ func Connect(ctx context.Context, opts ConnectOptions) (*client.Client, error) {
 		}
 	}
 
-	if err := c.Login(opts.Username, opts.Password); err != nil {
-		_ = c.Logout()
-		return nil, &ConnectError{Stage: StageLogin, Err: err}
+	if opts.OAuth2AccessToken != "" {
+		if err := c.Authenticate(&xoauth2SASLClient{username: opts.Username, accessToken: opts.OAuth2AccessToken}); err != nil {
+			_ = c.Logout()
+			return nil, &ConnectError{Stage: StageLogin, Err: err}
+		}
+	} else {
+		if err := c.Login(opts.Username, opts.Password); err != nil {
+			_ = c.Logout()
+			return nil, &ConnectError{Stage: StageLogin, Err: err}
+		}
 	}
 
 	return c, nil

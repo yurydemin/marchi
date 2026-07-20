@@ -97,6 +97,29 @@ func (r *AccountsRepo) Update(ctx context.Context, a *domain.Account) error {
 	})
 }
 
+// UpdateOAuth2Token replaces only oauth2_token_encrypted — the narrow
+// write a token refresh needs (internal/account.Manager.UpdateOAuth2Token),
+// as opposed to Update's full-row replace which would require the caller
+// to resupply every other field just to rotate a token.
+func (r *AccountsRepo) UpdateOAuth2Token(ctx context.Context, id int64, tokenEncrypted []byte) error {
+	return r.w.Do(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `
+			UPDATE accounts SET oauth2_token_encrypted = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+			tokenEncrypted, id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
+	})
+}
+
 // Delete removes the account identified by id. Every row that references
 // it (folders, emails, attachments, sync_logs) cascades via the schema's
 // own ON DELETE CASCADE foreign keys (FR-AM-06) — callers that also need
