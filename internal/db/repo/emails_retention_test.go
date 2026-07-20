@@ -10,10 +10,11 @@ import (
 	"github.com/yurydemin/marchi/internal/domain"
 )
 
-// backdateColumn directly rewrites a DATETIME column via raw SQL — the
-// normal Insert/MarkMovedToS3Only paths always stamp "now" via
-// CURRENT_TIMESTAMP, so tests that need a specific created_at/
-// s3_only_since to exercise cutoff comparisons have to reach around that.
+// backdateColumn directly rewrites a DATETIME column via raw SQL — Insert
+// always stamps created_at via CURRENT_TIMESTAMP, so tests that need a
+// specific created_at to exercise cutoff comparisons have to reach around
+// that (MarkMovedToS3Only's s3_only_since, by contrast, takes an explicit
+// now parameter and can just be passed the desired value directly).
 func backdateColumn(t *testing.T, sqlDB *sql.DB, table, column string, id int64, when time.Time) {
 	t.Helper()
 	_, err := sqlDB.Exec(`UPDATE `+table+` SET `+column+` = ? WHERE id = ?`,
@@ -109,7 +110,7 @@ func TestEmailsRepo_MarkMovedToS3Only_ThenListS3OnlyDueForDeletion(t *testing.T)
 	id := insertTestEmail(t, emails, w, accountID, folder.ID, 1, "local", "etag-1")
 
 	if err := w.Do(ctx, func(tx *sql.Tx) error {
-		return emails.MarkMovedToS3Only(ctx, tx, id)
+		return emails.MarkMovedToS3Only(ctx, tx, id, time.Now())
 	}); err != nil {
 		t.Fatalf("MarkMovedToS3Only: %v", err)
 	}

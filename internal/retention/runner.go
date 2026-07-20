@@ -126,7 +126,7 @@ func (r *Runner) Run(ctx context.Context) (Stats, error) {
 		policy := resolveEffectivePolicy(a, globalSettings)
 
 		if s3Enabled && policy.MoveToS3Days != nil {
-			r.evictToS3Only(ctx, a.ID, now.AddDate(0, 0, -*policy.MoveToS3Days), &stats)
+			r.evictToS3Only(ctx, a.ID, now.AddDate(0, 0, -*policy.MoveToS3Days), now, &stats)
 		} else if !s3Enabled && policy.LocalDays != nil {
 			r.deleteDirectNoBackup(ctx, a.ID, now.AddDate(0, 0, -*policy.LocalDays), &stats)
 		}
@@ -212,8 +212,11 @@ func (r *Runner) buildS3Client(ctx context.Context) (enabled bool, client *s3sto
 
 // evictToS3Only implements Stage A -> B for one account: delete the local
 // file and flip storage_location, only for emails whose S3 upload is
-// already confirmed (ListLocalDueForS3Eviction enforces that).
-func (r *Runner) evictToS3Only(ctx context.Context, accountID int64, cutoff time.Time, stats *Stats) {
+// already confirmed (ListLocalDueForS3Eviction enforces that). now
+// stamps s3_only_since — the same r.deps.Now() value Run resolved once
+// for this whole pass, not a fresh wall-clock read, so a test driving an
+// injected clock sees Stage B start exactly when the test says "now" is.
+func (r *Runner) evictToS3Only(ctx context.Context, accountID int64, cutoff, now time.Time, stats *Stats) {
 	due, err := r.deps.EmailsRepo.ListLocalDueForS3Eviction(ctx, accountID, cutoff)
 	if err != nil {
 		r.deps.Logger.Error("retention: listing Stage A->B candidates failed", zap.Int64("account_id", accountID), zap.Error(err))
@@ -222,7 +225,7 @@ func (r *Runner) evictToS3Only(ctx context.Context, accountID int64, cutoff time
 	}
 	for _, e := range due {
 		if err := r.deps.Writer.Do(ctx, func(tx *sql.Tx) error {
-			return r.deps.EmailsRepo.MarkMovedToS3Only(ctx, tx, e.ID)
+			return r.deps.EmailsRepo.MarkMovedToS3Only(ctx, tx, e.ID, now)
 		}); err != nil {
 			r.deps.Logger.Error("retention: marking email moved to s3-only failed", zap.Int64("email_id", e.ID), zap.Error(err))
 			stats.Errors++

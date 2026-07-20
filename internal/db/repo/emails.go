@@ -254,15 +254,20 @@ func (r *EmailsRepo) queryEmails(ctx context.Context, query string, args ...any)
 
 // MarkMovedToS3Only transitions an email from Stage A to Stage B: the
 // local copy is gone (LocalPath cleared), storage_location becomes 's3',
-// and s3_only_since is stamped so Stage B's own retention_s3_days
-// threshold has a starting point. Deleting the actual local file is the
-// caller's responsibility (internal/retention.Runner) — this only updates
-// bookkeeping, inside the caller's own Single-Writer transaction.
-func (r *EmailsRepo) MarkMovedToS3Only(ctx context.Context, tx *sql.Tx, emailID int64) error {
+// and s3_only_since is stamped to now so Stage B's own retention_s3_days
+// threshold has a starting point. now is a parameter (not SQLite's own
+// CURRENT_TIMESTAMP) so it tracks internal/retention.Runner's injectable
+// clock (Deps.Now) rather than the real wall clock — a test driving a
+// simulated "now" needs Stage B's start time to move with it, not with
+// whatever moment the test actually happened to run. Deleting the actual
+// local file is the caller's responsibility (internal/retention.Runner)
+// — this only updates bookkeeping, inside the caller's own Single-Writer
+// transaction.
+func (r *EmailsRepo) MarkMovedToS3Only(ctx context.Context, tx *sql.Tx, emailID int64, now time.Time) error {
 	_, err := tx.ExecContext(ctx, `
 		UPDATE emails SET storage_location = 's3', local_path = NULL,
-		       s3_only_since = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?`, emailID)
+		       s3_only_since = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`, now, emailID)
 	if err != nil {
 		return fmt.Errorf("repo: marking email %d moved to s3-only: %w", emailID, err)
 	}
