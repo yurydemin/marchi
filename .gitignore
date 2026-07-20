@@ -1,5 +1,5 @@
 # Build artifacts
-/mailvault
+/marchi
 /dist/
 *.exe
 *.test

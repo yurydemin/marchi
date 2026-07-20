@@ -13,7 +13,7 @@ import (
 func TestEmailKey(t *testing.T) {
 	date := time.Date(2026, time.March, 5, 0, 0, 0, 0, time.UTC)
 	got := EmailKey(7, date, "abcd1234")
-	want := "mailvault/v1/accounts/7/emails/2026/03/05/ab/abcd1234.eml"
+	want := "marchi/v1/accounts/7/emails/2026/03/05/ab/abcd1234.eml"
 	if got != want {
 		t.Errorf("EmailKey() = %q, want %q", got, want)
 	}
@@ -21,7 +21,7 @@ func TestEmailKey(t *testing.T) {
 
 func TestAttachmentKey(t *testing.T) {
 	got := AttachmentKey(7, "abcd1234", "invoice.pdf")
-	want := "mailvault/v1/accounts/7/attachments/abcd1234/invoice.pdf"
+	want := "marchi/v1/accounts/7/attachments/abcd1234/invoice.pdf"
 	if got != want {
 		t.Errorf("AttachmentKey() = %q, want %q", got, want)
 	}
@@ -34,7 +34,7 @@ func newTestClient(t *testing.T) *Client {
 	c, err := NewClient(Options{
 		Endpoint:        srv.Endpoint,
 		Region:          "us-east-1",
-		Bucket:          "mailvault-test",
+		Bucket:          "marchi-test",
 		AccessKeyID:     srv.AccessKeyID,
 		SecretAccessKey: srv.SecretKey,
 		PathStyle:       true,
@@ -91,7 +91,7 @@ func TestClient_PutGetDelete_RoundTrip(t *testing.T) {
 
 func TestClient_Delete_AbsentKeyIsNotError(t *testing.T) {
 	c := newTestClient(t)
-	if err := c.Delete(context.Background(), "mailvault/v1/accounts/1/emails/never/existed.eml"); err != nil {
+	if err := c.Delete(context.Background(), "marchi/v1/accounts/1/emails/never/existed.eml"); err != nil {
 		t.Errorf("Delete of absent key = %v, want nil", err)
 	}
 }

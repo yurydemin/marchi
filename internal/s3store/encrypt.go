@@ -18,9 +18,9 @@ const subkeyInfo = "s3-object-encryption"
 // S3 object metadata keys (FR-S3-05/FR-S3-08). The SDK sends these as
 // x-amz-meta-{key} headers.
 const (
-	MetaIV     = "mailvault-iv"
-	MetaTag    = "mailvault-tag"
-	MetaSHA256 = "mailvault-sha256"
+	MetaIV     = "marchi-iv"
+	MetaTag    = "marchi-tag"
+	MetaSHA256 = "marchi-sha256"
 )
 
 const (

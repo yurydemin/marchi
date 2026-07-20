@@ -16,7 +16,7 @@ import (
 
 func newTestManager(t *testing.T) *Manager {
 	t.Helper()
-	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "mailvault.db"))
+	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "marchi.db"))
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}
@@ -41,13 +41,13 @@ func TestManager_SaveAndGet_RoundTrips(t *testing.T) {
 	ctx := context.Background()
 
 	saved, err := mgr.Save(ctx, SaveParams{
-		Enabled: true, Endpoint: "https://s3.example.com", Region: "us-east-1", Bucket: "mailvault",
+		Enabled: true, Endpoint: "https://s3.example.com", Region: "us-east-1", Bucket: "marchi",
 		AccessKey: "AKIAEXAMPLE", SecretKey: "supersecret", PathStyle: true, StorageClass: "STANDARD_IA",
 	})
 	if err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	if !saved.Enabled || saved.Bucket != "mailvault" || saved.StorageClass != "STANDARD_IA" {
+	if !saved.Enabled || saved.Bucket != "marchi" || saved.StorageClass != "STANDARD_IA" {
 		t.Errorf("saved = %+v, unexpected fields", saved)
 	}
 	if bytes.Contains(saved.AccessKeyEncrypted, []byte("AKIAEXAMPLE")) {
@@ -75,7 +75,7 @@ func TestManager_Save_EmptyKeysOnUpdate_KeepsExisting(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := mgr.Save(ctx, SaveParams{
-		Bucket: "mailvault", Region: "us-east-1", AccessKey: "AKIAEXAMPLE", SecretKey: "supersecret",
+		Bucket: "marchi", Region: "us-east-1", AccessKey: "AKIAEXAMPLE", SecretKey: "supersecret",
 	}); err != nil {
 		t.Fatalf("first Save: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestManager_Save_EmptyKeysOnUpdate_KeepsExisting(t *testing.T) {
 	// Second save changes only Enabled/Endpoint, leaving AccessKey/SecretKey
 	// blank — must keep the previously stored credentials, not wipe them.
 	updated, err := mgr.Save(ctx, SaveParams{
-		Enabled: true, Bucket: "mailvault", Region: "us-east-1", Endpoint: "https://new.example.com",
+		Enabled: true, Bucket: "marchi", Region: "us-east-1", Endpoint: "https://new.example.com",
 	})
 	if err != nil {
 		t.Fatalf("second Save: %v", err)
@@ -109,7 +109,7 @@ func TestManager_Save_MissingBucket_Rejected(t *testing.T) {
 
 func TestManager_Save_MissingRegion_Rejected(t *testing.T) {
 	mgr := newTestManager(t)
-	if _, err := mgr.Save(context.Background(), SaveParams{Bucket: "mailvault"}); err == nil {
+	if _, err := mgr.Save(context.Background(), SaveParams{Bucket: "marchi"}); err == nil {
 		t.Error("Save with no region succeeded, want a validation error")
 	}
 }

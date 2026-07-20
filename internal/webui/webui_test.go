@@ -58,8 +58,8 @@ func TestParse_IndexPage_RendersLockedAndUnlockedContent(t *testing.T) {
 		want     string
 		notWant  string
 	}{
-		{"locked", false, "Unlock MailVault", "Dashboard"},
-		{"unlocked", true, "Dashboard", "Unlock MailVault"},
+		{"locked", false, "Unlock Marchi", "Dashboard"},
+		{"unlocked", true, "Dashboard", "Unlock Marchi"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

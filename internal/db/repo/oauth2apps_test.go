@@ -14,7 +14,7 @@ import (
 
 func openTestOAuth2AppsRepo(t *testing.T) *OAuth2AppsRepo {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "mailvault.db")
+	path := filepath.Join(t.TempDir(), "marchi.db")
 	sqlDB, err := db.Open(path)
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
@@ -40,7 +40,7 @@ func TestOAuth2AppsRepo_UpsertAndGet_RoundTrips(t *testing.T) {
 
 	app := &domain.OAuth2App{
 		Provider: domain.OAuth2ProviderGoogle, ClientID: "client-123.apps.googleusercontent.com",
-		ClientSecretEncrypted: []byte("encrypted-secret"), RedirectURL: "https://mailvault.local/oauth2/google/callback",
+		ClientSecretEncrypted: []byte("encrypted-secret"), RedirectURL: "https://marchi.local/oauth2/google/callback",
 	}
 	if err := repo.Upsert(ctx, app); err != nil {
 		t.Fatalf("Upsert: %v", err)

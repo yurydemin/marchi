@@ -23,7 +23,7 @@ import (
 // failure) still restores successfully via the SMTP fallback, recorded
 // as method=smtp.
 func TestRestoreOne_AppendFails_FallsBackToSMTP(t *testing.T) {
-	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "mailvault.db"))
+	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "marchi.db"))
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestRestoreOne_AppendFails_FallsBackToSMTP(t *testing.T) {
 // neither APPEND nor the SMTP fallback succeed — recorded as failed, not
 // silently dropped.
 func TestRestoreOne_BothMethodsFail_RecordsFailed(t *testing.T) {
-	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "mailvault.db"))
+	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "marchi.db"))
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}

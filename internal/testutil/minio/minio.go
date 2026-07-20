@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	rootUser     = "mailvault-test"
-	rootPassword = "mailvault-test-secret"
+	rootUser     = "marchi-test"
+	rootPassword = "marchi-test-secret"
 )
 
 // Server is a running MinIO test container, reachable over plain HTTP.
@@ -47,7 +47,7 @@ func Start(t *testing.T) *Server {
 	RequireDocker(t)
 
 	port := freeTCPPort(t)
-	name := fmt.Sprintf("mailvault-test-minio-%d", time.Now().UnixNano())
+	name := fmt.Sprintf("marchi-test-minio-%d", time.Now().UnixNano())
 
 	cmd := exec.Command("docker", "run", "-d", "--name", name,
 		"-p", fmt.Sprintf("%d:9000", port),

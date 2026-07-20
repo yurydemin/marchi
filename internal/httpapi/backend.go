@@ -30,7 +30,7 @@ import (
 )
 
 // rulesYAMLFilename is FR-RE-05's optional rules.yaml, resolved relative
-// to the data directory (alongside mailvault.db and .salt) — the same
+// to the data directory (alongside marchi.db and .salt) — the same
 // convention every other data-dir-rooted file in this project already
 // follows, rather than adding a dedicated config field for a single
 // optional path.

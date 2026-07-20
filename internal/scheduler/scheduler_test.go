@@ -30,7 +30,7 @@ type testEnv struct {
 func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 	dataDir := t.TempDir()
-	sqlDB, err := db.Open(filepath.Join(dataDir, "mailvault.db"))
+	sqlDB, err := db.Open(filepath.Join(dataDir, "marchi.db"))
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}

@@ -17,7 +17,7 @@ func TestLoad_ZeroConfig_NoFile(t *testing.T) {
 	if cfg.HTTP.Host != "127.0.0.1" || cfg.HTTP.Port != 8080 {
 		t.Errorf("HTTP = %s:%d, want 127.0.0.1:8080", cfg.HTTP.Host, cfg.HTTP.Port)
 	}
-	if cfg.Database.SQLite.Path != filepath.Join("./data", "mailvault.db") {
+	if cfg.Database.SQLite.Path != filepath.Join("./data", "marchi.db") {
 		t.Errorf("SQLite path = %q", cfg.Database.SQLite.Path)
 	}
 }
@@ -81,7 +81,7 @@ func TestLoad_CustomDataDirDerivesAllPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if want := filepath.Join("/custom/data", "mailvault.db"); cfg.Database.SQLite.Path != want {
+	if want := filepath.Join("/custom/data", "marchi.db"); cfg.Database.SQLite.Path != want {
 		t.Errorf("SQLite path = %q, want %q", cfg.Database.SQLite.Path, want)
 	}
 	if want := filepath.Join("/custom/data", "index"); cfg.Search.IndexPath != want {
@@ -104,7 +104,7 @@ func TestLoad_DataDirEnvOverrideDerivesAllPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if want := filepath.Join("/from/env", "mailvault.db"); cfg.Database.SQLite.Path != want {
+	if want := filepath.Join("/from/env", "marchi.db"); cfg.Database.SQLite.Path != want {
 		t.Errorf("SQLite path = %q, want %q", cfg.Database.SQLite.Path, want)
 	}
 	if want := filepath.Join("/from/env", "index"); cfg.Search.IndexPath != want {

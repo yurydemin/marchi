@@ -308,7 +308,7 @@ func (s *Scheduler) syncOne(accountID int64, jobID string) {
 
 // TriggerRetention submits an immediate, one-off retention pass onto the
 // same bounded worker pool sync uses (mirroring TriggerSync) — a manual
-// "run retention now" action (Settings UI, `mailvault retention run`
+// "run retention now" action (Settings UI, `marchi retention run`
 // against a live server) shares the same concurrency cap and
 // graceful-shutdown drain as everything else this Scheduler runs.
 func (s *Scheduler) TriggerRetention() error {

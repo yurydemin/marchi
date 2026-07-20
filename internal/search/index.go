@@ -1,4 +1,4 @@
-// Package search wraps Bluge, MailVault's full-text search engine
+// Package search wraps Bluge, Marchi's full-text search engine
 // (FR-SR-01..04). The index lives at {data_dir}/index/ and is never
 // replicated to S3 (FR-SR-01) — losing it just means a reindex (FR-SR-04,
 // see the reindex step) rebuilding it from the local .eml files that are

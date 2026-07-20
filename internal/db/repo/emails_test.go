@@ -15,7 +15,7 @@ import (
 
 func openTestEmailsRepo(t *testing.T) (*EmailsRepo, *FoldersRepo, *AccountsRepo, writer.Writer) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "mailvault.db")
+	path := filepath.Join(t.TempDir(), "marchi.db")
 	sqlDB, err := db.Open(path)
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)

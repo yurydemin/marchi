@@ -8,7 +8,7 @@
 // APPEND first and falls back to SMTP on ANY APPEND failure — including
 // a server that rejects the message outright (FR-RS-05's "duplicate
 // Message-ID" scenario is just one such rejection reason among others;
-// there's nothing MailVault itself needs to detect specially, the
+// there's nothing Marchi itself needs to detect specially, the
 // target server's own response is what decides success or failure). Only
 // if SMTP also fails is the attempt recorded as failed.
 package restore

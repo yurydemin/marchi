@@ -56,7 +56,7 @@ func Start(t *testing.T, user, password string) *Server {
 	RequireDocker(t)
 
 	port := freeTCPPort(t)
-	name := fmt.Sprintf("mailvault-test-dovecot-%d", time.Now().UnixNano())
+	name := fmt.Sprintf("marchi-test-dovecot-%d", time.Now().UnixNano())
 
 	confDir := t.TempDir()
 	confPath := filepath.Join(confDir, "99-test.conf")
@@ -102,7 +102,7 @@ func (s *Server) waitReady(t *testing.T, timeout time.Duration) {
 }
 
 // AppendMessage connects, logs in, and IMAP-APPENDs raw into mailbox. Test
-// fixture setup only — MailVault's own Restore Engine (Phase 3) is what
+// fixture setup only — Marchi's own Restore Engine (Phase 3) is what
 // eventually exercises APPEND as a product feature; this is just how tests
 // seed a mailbox with known content.
 func (s *Server) AppendMessage(t *testing.T, user, password, mailbox string, raw []byte) {

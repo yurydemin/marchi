@@ -18,7 +18,7 @@ import (
 
 // TestCrashRecovery_KillMidSync_ResumesWithoutDuplicatesOrLoss is this
 // phase's final acceptance test (NFR-RL-02/03): SIGKILL the real compiled
-// mailvault binary partway through a sync — a hard crash with no chance to
+// marchi binary partway through a sync — a hard crash with no chance to
 // run any cleanup at all, unlike the graceful SIGINT/SIGTERM path already
 // covered by internal/sync's own cancellation tests — then restart it and
 // confirm the archive ends up complete, with no duplicate or missing
@@ -43,7 +43,7 @@ func TestCrashRecovery_KillMidSync_ResumesWithoutDuplicatesOrLoss(t *testing.T) 
 
 	killMidSync(t, binary, dataDir, masterKey, email)
 
-	dbPath := filepath.Join(dataDir, "data", "mailvault.db")
+	dbPath := filepath.Join(dataDir, "data", "marchi.db")
 	partial := countEmails(t, dbPath)
 	if partial == 0 {
 		t.Fatal("expected at least some messages archived before the kill, got 0 — timing needs adjusting")
@@ -85,16 +85,16 @@ func testMessage(i int) []byte {
 // (SIGKILL, restart, on-disk recovery), not internal Go function calls.
 func buildMailvault(t *testing.T) string {
 	t.Helper()
-	binPath := filepath.Join(t.TempDir(), "mailvault")
+	binPath := filepath.Join(t.TempDir(), "marchi")
 	cmd := exec.Command("go", "build", "-o", binPath, ".")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("building mailvault: %v\n%s", err, out)
+		t.Fatalf("building marchi: %v\n%s", err, out)
 	}
 	return binPath
 }
 
 // runMailvault runs the compiled binary with args in dataDir (its working
-// directory — the zero-config default paths, e.g. "./data/mailvault.db",
+// directory — the zero-config default paths, e.g. "./data/marchi.db",
 // then resolve inside the test's isolated temp dir), feeding stdin and
 // failing the test on a non-zero exit.
 func runMailvault(t *testing.T, binary, dataDir string, env []string, stdin string, args ...string) string {
@@ -109,7 +109,7 @@ func runMailvault(t *testing.T, binary, dataDir string, env []string, stdin stri
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("running mailvault %v: %v\noutput:\n%s", args, err, out.String())
+		t.Fatalf("running marchi %v: %v\noutput:\n%s", args, err, out.String())
 	}
 	return out.String()
 }
@@ -205,7 +205,7 @@ func assertNoGapsInUIDs(t *testing.T, dbPath string, total int) {
 }
 
 // assertLocalPathsExist checks emails.local_path against disk. local_path
-// is stored relative to the mailvault subprocess's own working directory
+// is stored relative to the marchi subprocess's own working directory
 // (dataDir, per runMailvault/killMidSync setting cmd.Dir) — this test
 // process's cwd is the Go package directory instead, so paths are resolved
 // against dataDir explicitly rather than passed to os.Stat as-is.

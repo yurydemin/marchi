@@ -123,7 +123,7 @@ func TestLazyLoader_CacheMissThenHit_AgainstRealMinIO(t *testing.T) {
 	masterKey := randMasterKey(t)
 
 	plaintext := []byte("From: a@example.com\r\nSubject: lazy load test\r\n\r\nbody")
-	key := "mailvault/v1/accounts/1/emails/2026/07/19/ca/cafebabe.eml"
+	key := "marchi/v1/accounts/1/emails/2026/07/19/ca/cafebabe.eml"
 
 	body, meta, err := EncryptObject(masterKey, plaintext)
 	if err != nil {

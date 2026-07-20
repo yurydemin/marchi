@@ -1,6 +1,6 @@
 -- oauth2_apps holds the BYO OAuth2 application credentials (поправка #4:
 -- the user registers their own app with Google/Microsoft and pastes in
--- client_id/client_secret — MailVault ships no shared OAuth client). One
+-- client_id/client_secret — Marchi ships no shared OAuth client). One
 -- row per provider, not a singleton like s3_config/retention_settings,
 -- since both providers can be configured independently.
 --

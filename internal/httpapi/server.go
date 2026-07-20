@@ -1,4 +1,4 @@
-// Package httpapi is MailVault's HTTP server (FR-WU-*, FR-API-*): the
+// Package httpapi is Marchi's HTTP server (FR-WU-*, FR-API-*): the
 // long-running Fiber process that, unlike Phase 1's one-shot CLI commands,
 // stays up across many requests and starts in a locked state until the
 // Master Key is supplied (see the unlock-gate added in a later step).
@@ -46,7 +46,7 @@ const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 
 // browser still has to hit /unlock once to get its own session cookie.
 func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	app := fiber.New(fiber.Config{
-		AppName:               "MailVault",
+		AppName:               "Marchi",
 		DisableStartupMessage: true,
 	})
 
@@ -106,7 +106,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	return app, vault
 }
 
-// unlockFromEnv mirrors cmd/mailvault's own unlockMasterKey for the
+// unlockFromEnv mirrors cmd/marchi's own unlockMasterKey for the
 // env-var path (NFR-SC-01): if MAILVAULT_MASTER_KEY is set, unlock the
 // vault right away instead of waiting for an interactive web /unlock.
 // Unlike the CLI, there's no interactive stdin fallback here — a server

@@ -24,7 +24,7 @@ func TestDailyRotatingWriter_CreatesTodayFile(t *testing.T) {
 	dir := t.TempDir()
 	clock := func() time.Time { return time.Date(2026, 7, 17, 10, 0, 0, 0, time.UTC) }
 
-	w, err := newDailyRotatingWriter(dir, "mailvault", 0, 0, clock)
+	w, err := newDailyRotatingWriter(dir, "marchi", 0, 0, clock)
 	if err != nil {
 		t.Fatalf("newDailyRotatingWriter: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestDailyRotatingWriter_CreatesTodayFile(t *testing.T) {
 		t.Fatalf("Write: %v", err)
 	}
 
-	want := "mailvault-2026-07-17.log"
+	want := "marchi-2026-07-17.log"
 	data, err := os.ReadFile(filepath.Join(dir, want))
 	if err != nil {
 		t.Fatalf("expected %s to exist: %v", want, err)
@@ -49,7 +49,7 @@ func TestDailyRotatingWriter_DayRollover(t *testing.T) {
 	day := time.Date(2026, 7, 17, 23, 0, 0, 0, time.UTC)
 	clock := func() time.Time { return day }
 
-	w, err := newDailyRotatingWriter(dir, "mailvault", 0, 0, clock)
+	w, err := newDailyRotatingWriter(dir, "marchi", 0, 0, clock)
 	if err != nil {
 		t.Fatalf("newDailyRotatingWriter: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestDailyRotatingWriter_DayRollover(t *testing.T) {
 	}
 
 	names := mustReadDir(t, dir)
-	wantFiles := map[string]bool{"mailvault-2026-07-17.log": true, "mailvault-2026-07-18.log": true}
+	wantFiles := map[string]bool{"marchi-2026-07-17.log": true, "marchi-2026-07-18.log": true}
 	for _, n := range names {
 		delete(wantFiles, n)
 	}
@@ -79,7 +79,7 @@ func TestDailyRotatingWriter_SizeOverflowSameDay(t *testing.T) {
 	clock := func() time.Time { return time.Date(2026, 7, 17, 10, 0, 0, 0, time.UTC) }
 
 	// 10-byte cap forces overflow after the first write.
-	w, err := newDailyRotatingWriter(dir, "mailvault", 10, 0, clock)
+	w, err := newDailyRotatingWriter(dir, "marchi", 10, 0, clock)
 	if err != nil {
 		t.Fatalf("newDailyRotatingWriter: %v", err)
 	}
@@ -95,12 +95,12 @@ func TestDailyRotatingWriter_SizeOverflowSameDay(t *testing.T) {
 	names := mustReadDir(t, dir)
 	found2 := false
 	for _, n := range names {
-		if n == "mailvault-2026-07-17.2.log" {
+		if n == "marchi-2026-07-17.2.log" {
 			found2 = true
 		}
 	}
 	if !found2 {
-		t.Errorf("expected an overflow part file mailvault-2026-07-17.2.log, got %v", names)
+		t.Errorf("expected an overflow part file marchi-2026-07-17.2.log, got %v", names)
 	}
 }
 
@@ -112,8 +112,8 @@ func TestDailyRotatingWriter_RetentionSweep(t *testing.T) {
 	// Pre-seed an old file (40 days back, beyond a 30-day retention) and a
 	// recent one (5 days back), plus a file with a different prefix that
 	// must never be touched.
-	old := filepath.Join(dir, "mailvault-2026-06-07.log")
-	recent := filepath.Join(dir, "mailvault-2026-07-12.log")
+	old := filepath.Join(dir, "marchi-2026-06-07.log")
+	recent := filepath.Join(dir, "marchi-2026-07-12.log")
 	other := filepath.Join(dir, "otherapp-2026-01-01.log")
 	for _, p := range []string{old, recent, other} {
 		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
@@ -121,7 +121,7 @@ func TestDailyRotatingWriter_RetentionSweep(t *testing.T) {
 		}
 	}
 
-	w, err := newDailyRotatingWriter(dir, "mailvault", 0, 30, clock)
+	w, err := newDailyRotatingWriter(dir, "marchi", 0, 30, clock)
 	if err != nil {
 		t.Fatalf("newDailyRotatingWriter: %v", err)
 	}

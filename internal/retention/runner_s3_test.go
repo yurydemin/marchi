@@ -28,7 +28,7 @@ func TestRunner_FullLifecycle_MigratesEmailThroughAllThreeStages(t *testing.T) {
 
 	srv := minio.Start(t)
 	client, err := s3store.NewClient(s3store.Options{
-		Endpoint: srv.Endpoint, Region: "us-east-1", Bucket: "mailvault-retention-test",
+		Endpoint: srv.Endpoint, Region: "us-east-1", Bucket: "marchi-retention-test",
 		AccessKeyID: srv.AccessKeyID, SecretAccessKey: srv.SecretKey, PathStyle: true,
 	})
 	if err != nil {
@@ -47,7 +47,7 @@ func TestRunner_FullLifecycle_MigratesEmailThroughAllThreeStages(t *testing.T) {
 		t.Fatalf("s3config.NewManager: %v", err)
 	}
 	if _, err := s3ConfigMgr.Save(ctx, s3config.SaveParams{
-		Enabled: true, Endpoint: srv.Endpoint, Region: "us-east-1", Bucket: "mailvault-retention-test",
+		Enabled: true, Endpoint: srv.Endpoint, Region: "us-east-1", Bucket: "marchi-retention-test",
 		AccessKey: srv.AccessKeyID, SecretKey: srv.SecretKey, PathStyle: true,
 	}); err != nil {
 		t.Fatalf("saving s3 config: %v", err)

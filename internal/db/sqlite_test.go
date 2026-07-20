@@ -11,7 +11,7 @@ var wantTables = []string{
 }
 
 func TestOpen_AppliesMigrations(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "mailvault.db")
+	path := filepath.Join(t.TempDir(), "marchi.db")
 
 	sqlDB, err := Open(path)
 	if err != nil {
@@ -29,7 +29,7 @@ func TestOpen_AppliesMigrations(t *testing.T) {
 }
 
 func TestOpen_IsIdempotent(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "mailvault.db")
+	path := filepath.Join(t.TempDir(), "marchi.db")
 
 	db1, err := Open(path)
 	if err != nil {
@@ -55,7 +55,7 @@ func TestOpen_IsIdempotent(t *testing.T) {
 }
 
 func TestOpen_PragmasApplied(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "mailvault.db")
+	path := filepath.Join(t.TempDir(), "marchi.db")
 	sqlDB, err := Open(path)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -83,7 +83,7 @@ func TestOpen_ForeignKeyCascadeWorks(t *testing.T) {
 	// Regression guard for correction #11: foreign_keys must be ON on every
 	// pooled connection, not just one, or cascade deletes silently leave
 	// orphans depending on which connection serves the DELETE.
-	path := filepath.Join(t.TempDir(), "mailvault.db")
+	path := filepath.Join(t.TempDir(), "marchi.db")
 	sqlDB, err := Open(path)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -123,7 +123,7 @@ func TestOpen_ForeignKeyCascadeWorks(t *testing.T) {
 // internal/retention's package doc for why per-rule retention was
 // dropped in favor of this shape.
 func TestOpen_AccountsTableHasThreeRetentionOverrideColumns(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "mailvault.db")
+	path := filepath.Join(t.TempDir(), "marchi.db")
 	sqlDB, err := Open(path)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -169,7 +169,7 @@ func TestOpen_AccountsTableHasThreeRetentionOverrideColumns(t *testing.T) {
 }
 
 func TestClose_ChecksAndCloses(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "mailvault.db")
+	path := filepath.Join(t.TempDir(), "marchi.db")
 	sqlDB, err := Open(path)
 	if err != nil {
 		t.Fatalf("Open: %v", err)

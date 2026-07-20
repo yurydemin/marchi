@@ -16,7 +16,7 @@ const dateLayout = "2006-01-02"
 
 // LogFilePath resolves the daily log file for date (format "2006-01-02")
 // under dir, or today's file if date is empty. It does not chase same-day
-// overflow parts (mailvault-{date}.2.log, ...) — those only exist once a
+// overflow parts (marchi-{date}.2.log, ...) — those only exist once a
 // single day's log passes 100MB (NFR-RL-04), an edge case this CLI viewer
 // doesn't need to handle.
 func LogFilePath(dir, date string) (string, error) {

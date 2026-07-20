@@ -63,7 +63,7 @@ func withFakeGoogleEndpoint(t *testing.T, tokenURL string) {
 func testApp() App {
 	return App{
 		Provider: domain.OAuth2ProviderGoogle, ClientID: "test-client-id",
-		ClientSecret: "test-client-secret", RedirectURL: "https://mailvault.local/oauth2/google/callback",
+		ClientSecret: "test-client-secret", RedirectURL: "https://marchi.local/oauth2/google/callback",
 	}
 }
 

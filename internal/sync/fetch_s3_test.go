@@ -38,7 +38,7 @@ func TestFetchNewMessages_S3Mirror_EnqueuesAndUploadsToRealMinIO(t *testing.T) {
 
 	srv := minio.Start(t)
 	client, err := s3store.NewClient(s3store.Options{
-		Endpoint: srv.Endpoint, Region: "us-east-1", Bucket: "mailvault-sync-test",
+		Endpoint: srv.Endpoint, Region: "us-east-1", Bucket: "marchi-sync-test",
 		AccessKeyID: srv.AccessKeyID, SecretAccessKey: srv.SecretKey, PathStyle: true,
 	})
 	if err != nil {

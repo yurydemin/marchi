@@ -38,7 +38,7 @@ type restoreTestEnv struct {
 
 func newRestoreTestEnv(t *testing.T) *restoreTestEnv {
 	t.Helper()
-	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "mailvault.db"))
+	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "marchi.db"))
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestRestoreOne_S3ResidentEmail_LazyLoadsThenAppendsIntoRealDovecot(t *testi
 
 	minioSrv := minio.Start(t)
 	s3Client, err := s3store.NewClient(s3store.Options{
-		Endpoint: minioSrv.Endpoint, Region: "us-east-1", Bucket: "mailvault-restore-test",
+		Endpoint: minioSrv.Endpoint, Region: "us-east-1", Bucket: "marchi-restore-test",
 		AccessKeyID: minioSrv.AccessKeyID, SecretAccessKey: minioSrv.SecretKey, PathStyle: true,
 	})
 	if err != nil {

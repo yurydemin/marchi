@@ -11,7 +11,7 @@ import (
 
 func writeLogFile(t *testing.T, dir, date string, lines []string) {
 	t.Helper()
-	path := filepath.Join(dir, fmt.Sprintf("mailvault-%s.log", date))
+	path := filepath.Join(dir, fmt.Sprintf("marchi-%s.log", date))
 	content := strings.Join(lines, "\n")
 	if len(lines) > 0 {
 		content += "\n"

@@ -19,7 +19,7 @@ func newReindexCmd() *cobra.Command {
 		Use:   "reindex",
 		Short: "Rebuild the full-text search index from the local .eml archive (FR-SR-04)",
 		Long: "Rebuild the full-text search index from the local .eml archive (FR-SR-04).\n" +
-			"Do not run this while the server (`mailvault` with no subcommand) is running against\n" +
+			"Do not run this while the server (`marchi` with no subcommand) is running against\n" +
 			"the same data directory — it deletes and recreates the index directory on disk, which\n" +
 			"a concurrently open server process won't see.",
 		RunE: func(cmd *cobra.Command, args []string) error {

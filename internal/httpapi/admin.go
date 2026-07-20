@@ -6,7 +6,7 @@ import (
 )
 
 // registerAdmin wires POST /api/v1/admin/reindex (FR-SR-04), the web
-// counterpart of the CLI's `mailvault reindex`. Unlike the CLI version,
+// counterpart of the CLI's `marchi reindex`. Unlike the CLI version,
 // this one runs against a live server — see backend.runReindex's doc
 // comment for how that's kept safe without pausing the Scheduler.
 //

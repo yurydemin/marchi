@@ -78,7 +78,7 @@ func generateSelfSigned(certPath, keyPath string) error {
 
 	template := x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "MailVault (self-signed)"},
+		Subject:               pkix.Name{CommonName: "Marchi (self-signed)"},
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(certValidity),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,

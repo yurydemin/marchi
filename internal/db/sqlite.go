@@ -1,5 +1,5 @@
 // Package db opens the SQLite database (FR-ST-02: WAL mode, the only
-// database MailVault uses) and applies embedded schema migrations.
+// database Marchi uses) and applies embedded schema migrations.
 //
 // This package does not itself enforce the Single Writer Pattern — that's
 // internal/db/writer, built on top of the *sql.DB this package returns.

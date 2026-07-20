@@ -37,7 +37,7 @@ func TestBackoff(t *testing.T) {
 // MinIO container and confirm it lands in S3 with s3_etag/s3_sha256
 // recorded and the queue row removed.
 func TestUploader_ProcessesQueueAgainstRealMinIO(t *testing.T) {
-	sqlPath := filepath.Join(t.TempDir(), "mailvault.db")
+	sqlPath := filepath.Join(t.TempDir(), "marchi.db")
 	sqlDB, err := db.Open(sqlPath)
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)

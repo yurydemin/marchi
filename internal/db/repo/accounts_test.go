@@ -14,7 +14,7 @@ import (
 
 func openTestRepo(t *testing.T) (*AccountsRepo, writer.Writer) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "mailvault.db")
+	path := filepath.Join(t.TempDir(), "marchi.db")
 	sqlDB, err := db.Open(path)
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
@@ -214,7 +214,7 @@ func TestAccountsRepo_Delete_UnknownID(t *testing.T) {
 // accounts (directly or transitively) and confirms Delete cascades
 // through all of them.
 func TestAccountsRepo_Delete_CascadesToEverySiblingTable(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "mailvault.db")
+	path := filepath.Join(t.TempDir(), "marchi.db")
 	sqlDB, err := db.Open(path)
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)

@@ -339,7 +339,7 @@ func archiveOne(
 ) (bytesArchived int64, indexErr error, err error) {
 	messageID := md.MessageID
 	if messageID == "" {
-		messageID = fmt.Sprintf("<no-message-id-%d-%d-%d@mailvault.local>", accountID, folder.ID, uid)
+		messageID = fmt.Sprintf("<no-message-id-%d-%d-%d@marchi.local>", accountID, folder.ID, uid)
 	}
 	bodyText := mimeparse.ParseBody(raw)
 

@@ -1,4 +1,4 @@
-// MailVault's only hand-written client script. Kept out of inline <script>
+// Marchi's only hand-written client script. Kept out of inline <script>
 // tags and away from htmx's hx-on:/eval-based features so the page works
 // under the strict script-src 'self' CSP (NFR-SC-05) without 'unsafe-eval'.
 

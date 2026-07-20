@@ -14,7 +14,7 @@ import (
 
 func openTestS3ConfigRepo(t *testing.T) *S3ConfigRepo {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "mailvault.db")
+	path := filepath.Join(t.TempDir(), "marchi.db")
 	sqlDB, err := db.Open(path)
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
@@ -39,7 +39,7 @@ func TestS3ConfigRepo_UpsertAndGet_RoundTrips(t *testing.T) {
 	ctx := context.Background()
 
 	settings := &domain.S3Settings{
-		Enabled: true, Endpoint: "https://s3.example.com", Region: "us-east-1", Bucket: "mailvault",
+		Enabled: true, Endpoint: "https://s3.example.com", Region: "us-east-1", Bucket: "marchi",
 		AccessKeyEncrypted: []byte("encrypted-access-key"), SecretKeyEncrypted: []byte("encrypted-secret-key"),
 		PathStyle: true, StorageClass: "STANDARD_IA", TLSSkipVerify: true,
 	}

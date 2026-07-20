@@ -11,7 +11,7 @@ import (
 //
 // Unlike a general-purpose MDA that might share tmp/ with other concurrent
 // processes (and so waits out a grace period before sweeping, in case a
-// file is still being written), MailVault is the sole writer into its own
+// file is still being written), Marchi is the sole writer into its own
 // tmp/ dirs. A previous process is not still running by the time this
 // runs, so any leftover file was never committed — its SQLite write either
 // never happened or never succeeded, so the UID was never marked archived,

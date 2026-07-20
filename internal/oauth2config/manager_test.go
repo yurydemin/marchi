@@ -17,7 +17,7 @@ import (
 
 func newTestManager(t *testing.T) *Manager {
 	t.Helper()
-	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "mailvault.db"))
+	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "marchi.db"))
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestManager_SaveAndGet_RoundTrips(t *testing.T) {
 
 	saved, err := mgr.Save(ctx, SaveParams{
 		Provider: domain.OAuth2ProviderGoogle, ClientID: "client-123.apps.googleusercontent.com",
-		ClientSecret: "GOCSPX-supersecret", RedirectURL: "https://mailvault.local/oauth2/google/callback",
+		ClientSecret: "GOCSPX-supersecret", RedirectURL: "https://marchi.local/oauth2/google/callback",
 	})
 	if err != nil {
 		t.Fatalf("Save: %v", err)

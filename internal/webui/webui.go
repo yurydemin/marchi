@@ -1,4 +1,4 @@
-// Package webui parses MailVault's embedded html/template sources and
+// Package webui parses Marchi's embedded html/template sources and
 // exposes its embedded static assets (Tailwind CSS, self-hosted HTMX).
 // The templates and assets themselves live in the repo-root web/ package
 // (see its doc comment for why); this package is where they're compiled

@@ -3,7 +3,7 @@ package logging
 import "testing"
 
 func TestParseLine_ValidLine(t *testing.T) {
-	line := `{"level":"info","ts":"2026-07-17T22:33:38.123+0000","msg":"command started","command":"mailvault sync"}`
+	line := `{"level":"info","ts":"2026-07-17T22:33:38.123+0000","msg":"command started","command":"marchi sync"}`
 	e, err := ParseLine(line)
 	if err != nil {
 		t.Fatalf("ParseLine: %v", err)
@@ -17,7 +17,7 @@ func TestParseLine_ValidLine(t *testing.T) {
 	if e.Message != "command started" {
 		t.Errorf("Message = %q", e.Message)
 	}
-	if e.Fields["command"] != "mailvault sync" {
+	if e.Fields["command"] != "marchi sync" {
 		t.Errorf("Fields[command] = %v", e.Fields["command"])
 	}
 	if _, ok := e.Fields["ts"]; ok {

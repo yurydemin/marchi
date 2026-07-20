@@ -1,4 +1,4 @@
-# Техническое задание: MailVault Go — Система архивации электронной почты
+# Техническое задание: Marchi Go — Система архивации электронной почты
 
 **Версия:** 2.1  
 **Дата:** 2026-07-06 (обновлено 2026-07-18: язык реализации Go 1.22+ → Go 1.25+, см. ниже)  
@@ -310,12 +310,12 @@
 
 **FR-S3-04:** Object Layout в S3:
 ```
-s3://{bucket}/mailvault/v1/accounts/{account_id}/emails/{yyyy}/{mm}/{dd}/{sha256[:2]}/{sha256}.eml
-s3://{bucket}/mailvault/v1/accounts/{account_id}/attachments/{email_sha256}/{filename}
+s3://{bucket}/marchi/v1/accounts/{account_id}/emails/{yyyy}/{mm}/{dd}/{sha256[:2]}/{sha256}.eml
+s3://{bucket}/marchi/v1/accounts/{account_id}/attachments/{email_sha256}/{filename}
 ```
 `sha256` — SHA-256 от оригинального содержимого .eml (до шифрования). Это гарантирует дедупликацию на уровне S3.
 
-**FR-S3-05:** Client-side encryption: перед загрузкой в S3 каждый .eml шифруется AES-256-GCM с использованием Master Key (или производного ключа через HKDF). В S3 хранится ciphertext. Метаданные `x-amz-meta-mailvault-iv` и `x-amz-meta-mailvault-tag` содержат IV и auth tag.
+**FR-S3-05:** Client-side encryption: перед загрузкой в S3 каждый .eml шифруется AES-256-GCM с использованием Master Key (или производного ключа через HKDF). В S3 хранится ciphertext. Метаданные `x-amz-meta-marchi-iv` и `x-amz-meta-marchi-tag` содержат IV и auth tag.
 
 **FR-S3-06:** Асинхронная загрузка:
 - Очередь на основе SQLite (`s3_upload_queue`).
@@ -329,7 +329,7 @@ s3://{bucket}/mailvault/v1/accounts/{account_id}/attachments/{email_sha256}/{fil
 - При запросе письма: проверка кэша → скачивание из S3 → расшифровка → запись в кэш → отдача.
 - При bulk-экспорте: последовательное скачивание, concurrency = 2 (чтобы не исчерпать RAM).
 
-**FR-S3-08:** Проверка целостности: при загрузке в S3 вычисляется SHA-256 от оригинального содержимого. Сохраняется в `s3_sha256` (SQLite) и `x-amz-meta-mailvault-sha256`. При скачивании — верификация SHA-256 после расшифровки.
+**FR-S3-08:** Проверка целостности: при загрузке в S3 вычисляется SHA-256 от оригинального содержимого. Сохраняется в `s3_sha256` (SQLite) и `x-amz-meta-marchi-sha256`. При скачивании — верификация SHA-256 после расшифровки.
 
 **FR-S3-09:** Удаление из S3: при удалении письма из архива (ручное или по retention) — каскадное удаление из S3 через очередь `s3_upload_queue` (статус `pending_delete`).
 
@@ -384,12 +384,12 @@ s3://{bucket}/mailvault/v1/accounts/{account_id}/attachments/{email_sha256}/{fil
 **FR-API-03:** WebSocket endpoint `/ws` для real-time прогресса: синхронизация, восстановление, экспорт, переиндексация. Формат сообщений — JSON с полями `type`, `job_id`, `progress_percent`, `message`.
 
 **FR-API-04:** Prometheus metrics endpoint `/metrics` (без авторизации, но только на localhost):
-- `mailvault_emails_total`
-- `mailvault_storage_local_bytes`
-- `mailvault_storage_s3_bytes`
-- `mailvault_sync_duration_seconds`
-- `mailvault_s3_upload_queue_size`
-- `mailvault_s3_upload_failed_total`
+- `marchi_emails_total`
+- `marchi_storage_local_bytes`
+- `marchi_storage_s3_bytes`
+- `marchi_sync_duration_seconds`
+- `marchi_s3_upload_queue_size`
+- `marchi_s3_upload_failed_total`
 
 ---
 
@@ -415,7 +415,7 @@ s3://{bucket}/mailvault/v1/accounts/{account_id}/attachments/{email_sha256}/{fil
 
 **NFR-RL-03:** Атомарность записи: письмо считается заархивированным только после успешной записи .eml, SQLite и Bluge. Если ошибка на любом шаге — UID не фиксируется, повторная синхронизация загрузит письмо заново.
 
-**NFR-RL-04:** Ротация текстовых логов: `{data_dir}/logs/mailvault-{YYYY-MM-DD}.log`, хранение последних 30 дней, максимальный размер файла 100 МБ.
+**NFR-RL-04:** Ротация текстовых логов: `{data_dir}/logs/marchi-{YYYY-MM-DD}.log`, хранение последних 30 дней, максимальный размер файла 100 МБ.
 
 **NFR-RL-05:** Graceful shutdown: при SIGINT/SIGTERM — завершение текущих операций записи (flush SQLite WAL, закрытие Bluge index, закрытие IMAP IDLE), таймаут 30 секунд. Если не завершилось — force exit.
 
@@ -439,11 +439,11 @@ s3://{bucket}/mailvault/v1/accounts/{account_id}/attachments/{email_sha256}/{fil
 
 **NFR-DP-01:** Один бинарный файл для каждой платформы: Linux amd64/arm64, macOS amd64/arm64, Windows amd64.
 
-**NFR-DP-02:** Zero-config запуск: `./mailvault` создаёт `{cwd}/data/` и запускает веб-интерфейс на `localhost:8080`.
+**NFR-DP-02:** Zero-config запуск: `./marchi` создаёт `{cwd}/data/` и запускает веб-интерфейс на `localhost:8080`.
 
 **NFR-DP-03:** Конфигурация через `config.yaml` или переменные окружения (`MAILVAULT_DATA_DIR`, `MAILVAULT_HTTP_PORT`, `MAILVAULT_LOG_LEVEL`). Переменные окружения имеют приоритет над YAML.
 
-**NFR-DP-04:** Systemd unit файл в комплекте (`mailvault.service`). Windows Service — команда `mailvault service install`.
+**NFR-DP-04:** Systemd unit файл в комплекте (`marchi.service`). Windows Service — команда `marchi service install`.
 
 **NFR-DP-05:** Docker-файл и docker-compose.yml — для пользователей, предпочитающих контейнеризацию. Docker не является обязательным способом запуска.
 
@@ -628,7 +628,7 @@ doc := bluge.NewDocument(emailID).
 
 ```
 s3://{bucket}/
-  mailvault/
+  marchi/
     v1/
       accounts/{account_id}/
         emails/
@@ -647,7 +647,7 @@ s3://{bucket}/
 **Правила именования:**
 - `sha256` — SHA-256 от оригинального содержимого .eml (до client-side encryption).
 - `{email_sha256}` — SHA-256 родительского письма для группировки вложений.
-- Файлы в S3 — ciphertext (AES-256-GCM). Метаданные объекта: `x-amz-meta-mailvault-iv`, `x-amz-meta-mailvault-tag`, `x-amz-meta-mailvault-sha256`.
+- Файлы в S3 — ciphertext (AES-256-GCM). Метаданные объекта: `x-amz-meta-marchi-iv`, `x-amz-meta-marchi-tag`, `x-amz-meta-marchi-sha256`.
 
 ---
 
@@ -664,7 +664,7 @@ s3://{bucket}/
 - [ ] Maildir writer.
 - [ ] CLI: `add-account`, `list-accounts`, `sync`, `status`, `logs`.
 - [ ] Логирование в файл (`uber-go/zap`).
-- **Критерий приёма:** `mailvault add-account` + `mailvault sync` создаёт локальную папку с .eml файлами, SQLite содержит метаданные, WAL mode работает.
+- **Критерий приёма:** `marchi add-account` + `marchi sync` создаёт локальную папку с .eml файлами, SQLite содержит метаданные, WAL mode работает.
 
 ### 6.2. Фаза 2: Web UI и Поиск — Недели 4-6
 **Цель:** Веб-интерфейс и полнотекстовый поиск.
@@ -750,7 +750,7 @@ security:
 database:
   type: "sqlite"
   sqlite:
-    path: "./data/mailvault.db"
+    path: "./data/marchi.db"
 
 search:
   index_path: "./data/index"

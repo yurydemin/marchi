@@ -27,7 +27,7 @@ func ContentSHA256Hex(data []byte) string {
 
 // EmailKey returns the FR-S3-04 object key for an archived email:
 //
-//	mailvault/v1/accounts/{account_id}/emails/{yyyy}/{mm}/{dd}/{sha256[:2]}/{sha256}.eml
+//	marchi/v1/accounts/{account_id}/emails/{yyyy}/{mm}/{dd}/{sha256[:2]}/{sha256}.eml
 //
 // date is the email's own date (used for the yyyy/mm/dd partition), not
 // the upload time. sha256Hex must be the lowercase hex SHA-256 of the
@@ -35,7 +35,7 @@ func ContentSHA256Hex(data []byte) string {
 // avoid a single directory-equivalent prefix holding every object.
 func EmailKey(accountID int64, date time.Time, sha256Hex string) string {
 	return path.Join(
-		"mailvault", "v1",
+		"marchi", "v1",
 		"accounts", fmt.Sprint(accountID),
 		"emails",
 		fmt.Sprintf("%04d", date.Year()),
@@ -48,14 +48,14 @@ func EmailKey(accountID int64, date time.Time, sha256Hex string) string {
 
 // AttachmentKey returns the FR-S3-04 object key for an email's attachment:
 //
-//	mailvault/v1/accounts/{account_id}/attachments/{email_sha256}/{filename}
+//	marchi/v1/accounts/{account_id}/attachments/{email_sha256}/{filename}
 //
 // emailSHA256Hex ties the attachment back to its parent email's content
 // hash (not the attachment's own hash) — the layout groups an email's
 // attachments under one prefix.
 func AttachmentKey(accountID int64, emailSHA256Hex, filename string) string {
 	return path.Join(
-		"mailvault", "v1",
+		"marchi", "v1",
 		"accounts", fmt.Sprint(accountID),
 		"attachments",
 		emailSHA256Hex,

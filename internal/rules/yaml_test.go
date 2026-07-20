@@ -13,7 +13,7 @@ import (
 
 func openTestRulesRepo(t *testing.T) *repo.RulesRepo {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "mailvault.db")
+	path := filepath.Join(t.TempDir(), "marchi.db")
 	sqlDB, err := db.Open(path)
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)

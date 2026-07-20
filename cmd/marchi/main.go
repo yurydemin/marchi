@@ -1,4 +1,4 @@
-// Command mailvault is the single-binary entry point for the MailVault email archiving service.
+// Command marchi is the single-binary entry point for the Marchi email archiving service.
 package main
 
 import (
@@ -37,7 +37,7 @@ func main() {
 	if errors.Is(err, context.Canceled) {
 		// A deliberate, successful shutdown (SIGINT/SIGTERM), not a failure
 		// — exit 0 rather than printing a scary "Error: context canceled".
-		fmt.Fprintln(os.Stderr, "mailvault: shutdown requested, exited cleanly")
+		fmt.Fprintln(os.Stderr, "marchi: shutdown requested, exited cleanly")
 		return
 	}
 	fmt.Fprintln(os.Stderr, err)
@@ -52,7 +52,7 @@ func main() {
 func forceExitOnTimeout(ctx context.Context, timeout time.Duration) {
 	<-ctx.Done()
 	time.Sleep(timeout)
-	fmt.Fprintln(os.Stderr, "mailvault: graceful shutdown timed out, forcing exit")
+	fmt.Fprintln(os.Stderr, "marchi: graceful shutdown timed out, forcing exit")
 	os.Exit(1)
 }
 
@@ -60,8 +60,8 @@ func newRootCmd() *cobra.Command {
 	var closeLogging func() error
 
 	root := &cobra.Command{
-		Use:          "mailvault",
-		Short:        "MailVault — self-hosted email archiving service",
+		Use:          "marchi",
+		Short:        "Marchi — self-hosted email archiving service",
 		SilenceUsage: true,
 		// main() already prints every error itself (both the "clean
 		// shutdown" and generic cases below) — leaving Cobra's own default
@@ -69,7 +69,7 @@ func newRootCmd() *cobra.Command {
 		// failing command.
 		SilenceErrors: true,
 		Version:       version.String(),
-		// With no subcommand, mailvault starts the web server (NFR-DP-02:
+		// With no subcommand, marchi starts the web server (NFR-DP-02:
 		// "zero-config запуск ... запускает веб-интерфейс").
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return httpapi.Serve(cmd.Context(), configFrom(cmd.Context()), loggerFrom(cmd.Context()))
@@ -117,7 +117,7 @@ func newRootCmd() *cobra.Command {
 			return err
 		},
 	}
-	root.SetVersionTemplate("mailvault {{.Version}}\n")
+	root.SetVersionTemplate("marchi {{.Version}}\n")
 	root.PersistentFlags().String("config", "./config.yaml", "path to config.yaml (missing file is not an error)")
 
 	root.AddCommand(newConfigCmd())

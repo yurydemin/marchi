@@ -46,7 +46,7 @@ var (
 // verifyMagic is the fixed plaintext encrypted under the derived key to
 // build the verifier blob; a password is "correct" iff decrypting the
 // stored verifier with the freshly-derived key yields this back.
-var verifyMagic = []byte("mailvault-master-key-v1")
+var verifyMagic = []byte("marchi-master-key-v1")
 
 // Argon2Params mirrors config.Argon2Config, kept as this package's own type
 // so it doesn't depend on internal/config.

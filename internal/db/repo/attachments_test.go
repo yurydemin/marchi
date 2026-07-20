@@ -21,7 +21,7 @@ type attachmentsTestEnv struct {
 
 func openAttachmentsTestEnv(t *testing.T) *attachmentsTestEnv {
 	t.Helper()
-	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "mailvault.db"))
+	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "marchi.db"))
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
 	}

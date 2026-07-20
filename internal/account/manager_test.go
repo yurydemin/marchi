@@ -27,7 +27,7 @@ func testMasterKey(t *testing.T) []byte {
 
 func openTestManager(t *testing.T, masterKey []byte) *Manager {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "mailvault.db")
+	path := filepath.Join(t.TempDir(), "marchi.db")
 	sqlDB, err := db.Open(path)
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)

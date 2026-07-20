@@ -18,7 +18,7 @@ import (
 
 // Metadata is what gets extracted for SQLite indexing (FR-ST-03's emails
 // table columns) — not the full parsed message, just the header fields
-// MailVault cares about for search/browsing.
+// Marchi cares about for search/browsing.
 //
 // From/To/Cc are the RFC 5322 mailbox strings (e.g. `"Alice" <a@x.com>` or
 // just `<a@x.com>` with no display name) — the human-readable form SQLite

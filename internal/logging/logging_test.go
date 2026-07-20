@@ -21,7 +21,7 @@ func TestNew_WritesJSONToRotatingFile(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	name := "mailvault-" + time.Now().Format("2006-01-02") + ".log"
+	name := "marchi-" + time.Now().Format("2006-01-02") + ".log"
 	data, err := os.ReadFile(filepath.Join(dir, name))
 	if err != nil {
 		t.Fatalf("expected log file: %v", err)
@@ -46,7 +46,7 @@ func TestNew_LevelFiltering(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	name := "mailvault-" + time.Now().Format("2006-01-02") + ".log"
+	name := "marchi-" + time.Now().Format("2006-01-02") + ".log"
 	data, err := os.ReadFile(filepath.Join(dir, name))
 	if err != nil {
 		t.Fatalf("expected log file: %v", err)
@@ -76,7 +76,7 @@ func TestNew_ConsoleFormat(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	name := "mailvault-" + time.Now().Format("2006-01-02") + ".log"
+	name := "marchi-" + time.Now().Format("2006-01-02") + ".log"
 	data, err := os.ReadFile(filepath.Join(dir, name))
 	if err != nil {
 		t.Fatalf("expected log file: %v", err)

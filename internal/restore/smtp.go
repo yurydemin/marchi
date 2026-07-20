@@ -23,7 +23,7 @@ const defaultSMTPPort = 587
 const smtpTimeout = 30 * time.Second
 
 // deriveSMTPHost guesses the SMTP submission host from an account's IMAP
-// host, since MailVault has no dedicated SMTP connection settings yet
+// host, since Marchi has no dedicated SMTP connection settings yet
 // (accounts only has IMAP fields) — full SMTP account configuration,
 // including OAuth2/XOAUTH2, is Phase 3 step 14's job. The common
 // "imap.example.com" -> "smtp.example.com" convention covers most

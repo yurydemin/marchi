@@ -1,5 +1,5 @@
 // Package logging wires uber-go/zap to a daily-rotating file sink per
-// NFR-RL-04: {data_dir}/logs/mailvault-{YYYY-MM-DD}.log, 30-day retention,
+// NFR-RL-04: {data_dir}/logs/marchi-{YYYY-MM-DD}.log, 30-day retention,
 // 100MB max file size.
 package logging
 
@@ -15,7 +15,7 @@ const (
 	DefaultMaxSizeMB  = 100
 	DefaultMaxAgeDays = 30
 
-	filePrefix = "mailvault"
+	filePrefix = "marchi"
 )
 
 // Options configures New. Zero values fall back to NFR-RL-04 defaults.

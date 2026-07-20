@@ -1,4 +1,4 @@
-// Package imapclient wraps emersion/go-imap's client for MailVault's
+// Package imapclient wraps emersion/go-imap's client for Marchi's
 // Account Manager and Sync Engine: connecting with a chosen TLS mode,
 // logging in, and classifying failures into stages.
 //

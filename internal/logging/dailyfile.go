@@ -10,8 +10,8 @@ import (
 )
 
 // dailyRotatingWriter implements NFR-RL-04: one file per calendar day named
-// {dir}/mailvault-{YYYY-MM-DD}.log, capped at maxBytes (overflow within the
-// same day spills into mailvault-{date}.2.log, .3.log, ...), with files older
+// {dir}/marchi-{YYYY-MM-DD}.log, capped at maxBytes (overflow within the
+// same day spills into marchi-{date}.2.log, .3.log, ...), with files older
 // than maxAgeDays swept on each day rollover.
 type dailyRotatingWriter struct {
 	mu         sync.Mutex

@@ -26,7 +26,7 @@ func TestComputeStats_S3Configured_ReflectsEnabledAndQueueCounts(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := b.s3ConfigManager.Save(ctx, s3config.SaveParams{
-		Enabled: true, Bucket: "mailvault", Region: "us-east-1",
+		Enabled: true, Bucket: "marchi", Region: "us-east-1",
 		AccessKey: "AKIAEXAMPLE", SecretKey: "supersecret",
 	}); err != nil {
 		t.Fatalf("Save: %v", err)

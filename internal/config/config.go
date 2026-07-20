@@ -1,4 +1,4 @@
-// Package config loads MailVault's configuration from config.yaml, layering
+// Package config loads Marchi's configuration from config.yaml, layering
 // environment variable overrides on top per NFR-DP-03 (env wins over YAML).
 package config
 
@@ -131,7 +131,7 @@ func Defaults(dataDir string) *Config {
 		Database: DatabaseConfig{
 			Type: "sqlite",
 			SQLite: SQLiteConfig{
-				Path: filepath.Join(dataDir, "mailvault.db"),
+				Path: filepath.Join(dataDir, "marchi.db"),
 			},
 		},
 		Search: SearchConfig{

@@ -1,5 +1,5 @@
 // Package crypto provides the AES-256-GCM encryption and HKDF subkey
-// derivation primitives used throughout MailVault: encrypting IMAP
+// derivation primitives used throughout Marchi: encrypting IMAP
 // passwords/OAuth2 tokens/S3 credentials before they touch SQLite, and
 // client-side encrypting .eml files before they're uploaded to S3.
 //

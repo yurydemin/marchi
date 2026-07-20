@@ -14,7 +14,7 @@ import (
 
 func openTestS3UploadQueueRepo(t *testing.T) (*S3UploadQueueRepo, *EmailsRepo, *FoldersRepo, *AccountsRepo, writer.Writer) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "mailvault.db")
+	path := filepath.Join(t.TempDir(), "marchi.db")
 	sqlDB, err := db.Open(path)
 	if err != nil {
 		t.Fatalf("db.Open: %v", err)
@@ -57,7 +57,7 @@ func TestS3UploadQueueRepo_EnqueueAndClaimBatch(t *testing.T) {
 	emailID := mustCreateEmail(t, emails, folders, accounts, w, 1)
 
 	if err := w.Do(ctx, func(tx *sql.Tx) error {
-		return q.Enqueue(ctx, tx, emailID, "mailvault/v1/accounts/1/emails/2026/07/19/ab/abcd.eml", "/data/maildir/1/INBOX/new/abcd")
+		return q.Enqueue(ctx, tx, emailID, "marchi/v1/accounts/1/emails/2026/07/19/ab/abcd.eml", "/data/maildir/1/INBOX/new/abcd")
 	}); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestS3UploadQueueRepo_MarkDone_UpdatesEmailAndRemovesRow(t *testing.T) {
 	emailID := mustCreateEmail(t, emails, folders, accounts, w, 1)
 
 	if err := w.Do(ctx, func(tx *sql.Tx) error {
-		return q.Enqueue(ctx, tx, emailID, "mailvault/v1/accounts/1/emails/k.eml", "/path")
+		return q.Enqueue(ctx, tx, emailID, "marchi/v1/accounts/1/emails/k.eml", "/path")
 	}); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestS3UploadQueueRepo_MarkDone_UpdatesEmailAndRemovesRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
-	if email.S3ETag != "etag-123" || email.S3SHA256 != "deadbeef" || email.S3Key != "mailvault/v1/accounts/1/emails/k.eml" {
+	if email.S3ETag != "etag-123" || email.S3SHA256 != "deadbeef" || email.S3Key != "marchi/v1/accounts/1/emails/k.eml" {
 		t.Errorf("email S3 fields = %+v, want etag/sha256/key set from MarkDone", email)
 	}
 

@@ -97,7 +97,7 @@ func handleExport(vault *vaultState) fiber.Handler {
 		}
 
 		c.Set(fiber.HeaderContentType, "application/zip")
-		c.Set(fiber.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="mailvault-export-%s.zip"`, time.Now().Format("20060102-150405")))
+		c.Set(fiber.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="marchi-export-%s.zip"`, time.Now().Format("20060102-150405")))
 		c.Set("X-Job-Id", jobID)
 
 		// context.Background(), not c.Context(): the stream writer below

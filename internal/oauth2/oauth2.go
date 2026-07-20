@@ -3,7 +3,7 @@
 // SASL XOAUTH2 initial-response encoding IMAP and SMTP both use to
 // authenticate with a bearer token instead of a plain password.
 //
-// поправка #4 ("BYO app"): MailVault ships no shared OAuth client — the
+// поправка #4 ("BYO app"): Marchi ships no shared OAuth client — the
 // user registers their own application with Google/Microsoft and pastes
 // in its client_id/client_secret (internal/oauth2config.Manager, backed
 // by the oauth2_apps table). This package only knows how to talk to
