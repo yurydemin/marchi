@@ -17,6 +17,7 @@ import (
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
 	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/oauth2config"
 	"github.com/yurydemin/marchi/internal/reindex"
 	"github.com/yurydemin/marchi/internal/restore"
 	"github.com/yurydemin/marchi/internal/retention"
@@ -65,6 +66,12 @@ type backend struct {
 	retentionSettingsRepo *repo.RetentionSettingsRepo
 	restoreLogsRepo       *repo.RestoreLogsRepo
 	manager               *account.Manager
+	// oauth2ConfigManager wraps oauth2_apps with the shared credential
+	// subkey (FR-AM-01's BYO app model, Phase 3 step 13/14) — feeds both
+	// the OAuth2 Settings API and the Restore Engine's token refresh
+	// (restore.Deps.OAuth2Refresher).
+	oauth2AppsRepo  *repo.OAuth2AppsRepo
+	oauth2ConfigMgr *oauth2config.Manager
 
 	// s3Uploader is the mirror upload queue's worker pool (FR-S3-06),
 	// started only if s3_config exists and is Enabled at unlock time —
@@ -154,6 +161,15 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 
 	retentionSettingsRepo := repo.NewRetentionSettingsRepo(sqlDB, w)
 
+	oauth2AppsRepo := repo.NewOAuth2AppsRepo(sqlDB, w)
+	oauth2ConfigMgr, err := oauth2config.NewManager(oauth2AppsRepo, masterKey)
+	if err != nil {
+		_ = idx.Close()
+		w.Close()
+		_ = db.Close(sqlDB)
+		return nil, fmt.Errorf("httpapi: initializing oauth2 config manager: %w", err)
+	}
+
 	b := &backend{
 		sqlDB:                 sqlDB,
 		w:                     w,
@@ -172,6 +188,8 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 		retentionSettingsRepo: retentionSettingsRepo,
 		restoreLogsRepo:       repo.NewRestoreLogsRepo(sqlDB, w),
 		manager:               mgr,
+		oauth2AppsRepo:        oauth2AppsRepo,
+		oauth2ConfigMgr:       oauth2ConfigMgr,
 		index:                 idx,
 	}
 
@@ -364,6 +382,7 @@ func (b *backend) runRestoreAsync(jobID string, emailIDs []int64, targetAccountI
 		restorer := restore.New(restore.Deps{
 			EmailsRepo: b.emailsRepo, AccountsRepo: b.accountsRepo,
 			RestoreLogsRepo: b.restoreLogsRepo, Manager: b.manager, LazyLoader: b.lazyLoader,
+			OAuth2Refresher: b.oauth2ConfigMgr,
 		})
 
 		total := len(emailIDs)

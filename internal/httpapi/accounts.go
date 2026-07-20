@@ -15,6 +15,7 @@ import (
 	"github.com/yurydemin/marchi/internal/domain"
 	"github.com/yurydemin/marchi/internal/imapclient"
 	"github.com/yurydemin/marchi/internal/maildir"
+	oauth2pkg "github.com/yurydemin/marchi/internal/oauth2"
 )
 
 // registerAccounts wires the Accounts REST API (FR-API-02): CRUD, a
@@ -23,6 +24,7 @@ import (
 func registerAccounts(app *fiber.App, vault *vaultState) {
 	app.Get("/api/v1/accounts", handleListAccounts(vault))
 	app.Post("/api/v1/accounts", handleCreateAccount(vault))
+	app.Post("/api/v1/accounts/oauth2", handleCreateOAuth2Account(vault))
 	app.Put("/api/v1/accounts/:id", handleUpdateAccount(vault))
 	app.Delete("/api/v1/accounts/:id", handleDeleteAccount(vault))
 	app.Post("/api/v1/accounts/:id/test", handleTestAccount(vault))
@@ -32,25 +34,26 @@ func registerAccounts(app *fiber.App, vault *vaultState) {
 }
 
 type accountResponse struct {
-	ID           int64     `json:"id"`
-	Email        string    `json:"email"`
-	DisplayName  string    `json:"display_name"`
-	IMAPHost     string    `json:"imap_host"`
-	IMAPPort     int       `json:"imap_port"`
-	IMAPTLS      string    `json:"imap_tls"`
-	IMAPUsername string    `json:"imap_username"`
-	IsActive     bool      `json:"is_active"`
-	SyncCron     string    `json:"sync_cron,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID             int64     `json:"id"`
+	Email          string    `json:"email"`
+	DisplayName    string    `json:"display_name"`
+	IMAPHost       string    `json:"imap_host"`
+	IMAPPort       int       `json:"imap_port"`
+	IMAPTLS        string    `json:"imap_tls"`
+	IMAPUsername   string    `json:"imap_username"`
+	OAuth2Provider string    `json:"oauth2_provider,omitempty"`
+	IsActive       bool      `json:"is_active"`
+	SyncCron       string    `json:"sync_cron,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 func accountResponseFrom(a *domain.Account) accountResponse {
 	return accountResponse{
 		ID: a.ID, Email: a.Email, DisplayName: a.DisplayName,
 		IMAPHost: a.IMAPHost, IMAPPort: a.IMAPPort, IMAPTLS: a.IMAPTLS.String(),
-		IMAPUsername: a.IMAPUsername, IsActive: a.IsActive, SyncCron: a.SyncCron,
-		CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
+		IMAPUsername: a.IMAPUsername, OAuth2Provider: a.OAuth2Provider, IsActive: a.IsActive,
+		SyncCron: a.SyncCron, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
 	}
 }
 
@@ -101,6 +104,69 @@ func handleCreateAccount(vault *vaultState) fiber.Handler {
 			Email: req.Email, DisplayName: req.DisplayName, IMAPHost: req.IMAPHost,
 			IMAPPort: req.IMAPPort, IMAPTLS: tlsMode, IMAPUsername: req.IMAPUsername,
 			IMAPPassword: req.IMAPPassword,
+		})
+		if err != nil {
+			if errors.Is(err, repo.ErrDuplicateEmail) {
+				return fiber.NewError(fiber.StatusConflict, "an account with this email already exists")
+			}
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+		return c.Status(fiber.StatusCreated).JSON(accountResponseFrom(a))
+	}
+}
+
+// createOAuth2AccountRequest accepts a pre-obtained token directly
+// (oauth2_access_token/oauth2_refresh_token/oauth2_expires_in_seconds),
+// rather than performing a server-side authorization-code exchange —
+// consistent with the project's no-live-consent-screen testing/operating
+// policy (Phase 3 step 13's plan note): whatever obtained the token
+// (a CLI helper, a one-off script hitting internal/oauth2.App.Exchange)
+// is outside this endpoint's job, which is only to store it. Requires
+// provider's oauth2_apps row (registerOAuth2Settings) to already exist
+// for token refresh to ever work later, but account creation itself
+// doesn't need it — the token is stored as given.
+type createOAuth2AccountRequest struct {
+	Email               string `json:"email" form:"email"`
+	DisplayName         string `json:"display_name" form:"display_name"`
+	IMAPHost            string `json:"imap_host" form:"imap_host"`
+	IMAPPort            int    `json:"imap_port" form:"imap_port"`
+	IMAPTLS             string `json:"imap_tls" form:"imap_tls"`
+	IMAPUsername        string `json:"imap_username" form:"imap_username"`
+	OAuth2Provider      string `json:"oauth2_provider" form:"oauth2_provider"`
+	OAuth2AccessToken   string `json:"oauth2_access_token" form:"oauth2_access_token"`
+	OAuth2RefreshToken  string `json:"oauth2_refresh_token" form:"oauth2_refresh_token"`
+	OAuth2ExpiresInSecs int    `json:"oauth2_expires_in_seconds" form:"oauth2_expires_in_seconds"` // 0 = unknown/never
+	OAuth2Scope         string `json:"oauth2_scope" form:"oauth2_scope"`
+}
+
+func handleCreateOAuth2Account(vault *vaultState) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		b, err := currentBackendOrLocked(vault)
+		if err != nil {
+			return err
+		}
+		var req createOAuth2AccountRequest
+		if err := c.BodyParser(&req); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
+		}
+		tlsMode, err := domain.ParseIMAPTLSMode(req.IMAPTLS)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+
+		var expiry time.Time
+		if req.OAuth2ExpiresInSecs > 0 {
+			expiry = time.Now().Add(time.Duration(req.OAuth2ExpiresInSecs) * time.Second)
+		}
+
+		a, err := b.manager.AddOAuth2Account(c.Context(), account.AddOAuth2AccountParams{
+			Email: req.Email, DisplayName: req.DisplayName, IMAPHost: req.IMAPHost,
+			IMAPPort: req.IMAPPort, IMAPTLS: tlsMode, IMAPUsername: req.IMAPUsername,
+			Provider: req.OAuth2Provider,
+			Token: oauth2pkg.Token{
+				AccessToken: req.OAuth2AccessToken, RefreshToken: req.OAuth2RefreshToken,
+				Expiry: expiry, Scope: req.OAuth2Scope,
+			},
 		})
 		if err != nil {
 			if errors.Is(err, repo.ErrDuplicateEmail) {

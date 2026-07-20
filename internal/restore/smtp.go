@@ -8,6 +8,7 @@ import (
 
 	mail "github.com/wneessen/go-mail"
 
+	"github.com/yurydemin/marchi/internal/account"
 	"github.com/yurydemin/marchi/internal/domain"
 )
 
@@ -42,19 +43,21 @@ func deriveSMTPHost(imapHost string) string {
 // the message gets a fresh delivery date — which is the documented
 // trade-off for this being the fallback, not the primary, method.
 //
-// go-mail's Client handles the connection/TLS/AUTH handshake (and is
-// ready for step 14 to add XOAUTH2 there without touching this function),
-// but the actual envelope and DATA are sent through the raw smtp.Client
-// it hands back, not through go-mail's own Msg builder — that's what
-// keeps every original header byte-identical rather than being
-// re-serialized by a message-composition API designed for building new
-// messages, not replaying existing ones untouched.
-func (r *Restorer) trySMTP(ctx context.Context, targetAccount *domain.Account, password string, content []byte) error {
+// go-mail's Client handles the connection/TLS/AUTH handshake — including
+// XOAUTH2 for an OAuth2 targetAccount (auth.OAuth2AccessToken set), via
+// its native SMTPAuthXOAUTH2 (whose wire encoding matches
+// internal/oauth2.XOAUTH2InitialResponse byte-for-byte) — but the actual
+// envelope and DATA are sent through the raw smtp.Client it hands back,
+// not through go-mail's own Msg builder — that's what keeps every
+// original header byte-identical rather than being re-serialized by a
+// message-composition API designed for building new messages, not
+// replaying existing ones untouched.
+func (r *Restorer) trySMTP(ctx context.Context, targetAccount *domain.Account, auth account.IMAPAuth, content []byte) error {
 	port := defaultSMTPPort
 	if smtpPortOverrideForTests != 0 {
 		port = smtpPortOverrideForTests
 	}
-	return sendSMTP(ctx, deriveSMTPHost(targetAccount.IMAPHost), port, targetAccount, password, content)
+	return sendSMTP(ctx, deriveSMTPHost(targetAccount.IMAPHost), port, targetAccount, auth, content)
 }
 
 // smtpPortOverrideForTests lets this package's own tests (same package,
@@ -65,8 +68,11 @@ var smtpPortOverrideForTests int
 
 // sendSMTP is trySMTP's implementation with host/port broken out as
 // explicit parameters — trySMTP derives them from the account, tests
-// point them directly at a fake SMTP server instead.
-func sendSMTP(ctx context.Context, host string, port int, targetAccount *domain.Account, password string, content []byte) error {
+// point them directly at a fake SMTP server instead. auth picks the SMTP
+// AUTH mechanism: OAuth2AccessToken set means XOAUTH2 (the token stands
+// in for go-mail's "password" argument, per its smtp.XOAuth2Auth), a
+// plain Password means AUTH PLAIN.
+func sendSMTP(ctx context.Context, host string, port int, targetAccount *domain.Account, auth account.IMAPAuth, content []byte) error {
 	ctx, cancel := context.WithTimeout(ctx, smtpTimeout)
 	defer cancel()
 
@@ -75,12 +81,19 @@ func sendSMTP(ctx context.Context, host string, port int, targetAccount *domain.
 		username = targetAccount.Email
 	}
 
+	authType := mail.SMTPAuthPlain
+	secret := auth.Password
+	if auth.OAuth2AccessToken != "" {
+		authType = mail.SMTPAuthXOAUTH2
+		secret = auth.OAuth2AccessToken
+	}
+
 	client, err := mail.NewClient(host,
 		mail.WithPort(port),
 		mail.WithTLSPolicy(mail.TLSOpportunistic),
-		mail.WithSMTPAuth(mail.SMTPAuthPlain),
+		mail.WithSMTPAuth(authType),
 		mail.WithUsername(username),
-		mail.WithPassword(password),
+		mail.WithPassword(secret),
 		mail.WithTimeout(smtpTimeout),
 	)
 	if err != nil {

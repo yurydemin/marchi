@@ -38,7 +38,13 @@ type Deps struct {
 	// load it back, which needs S3 configured. A nil LazyLoader is only
 	// a problem for S3-resident emails; local ones restore regardless.
 	LazyLoader *s3store.LazyLoader
-	Logger     *zap.Logger
+	// OAuth2Refresher refreshes an expired OAuth2 target account's token
+	// before APPEND/SMTP — typically *oauth2config.Manager. nil means an
+	// expired token is used as-is (account.Manager.ResolveIMAPAuth's own
+	// documented fallback), which will simply fail authentication with a
+	// clear error rather than refreshing first.
+	OAuth2Refresher account.OAuth2TokenRefresher
+	Logger          *zap.Logger
 }
 
 // Restorer executes restore operations against Deps.
@@ -76,20 +82,20 @@ func (r *Restorer) RestoreOne(ctx context.Context, emailID, targetAccountID int6
 		return r.record(ctx, email.ID, targetAccountID, targetFolder, domain.RestoreMethodIMAPAppend, loadErr)
 	}
 
-	password, err := r.deps.Manager.DecryptPassword(targetAccount)
+	auth, err := r.deps.Manager.ResolveIMAPAuth(ctx, targetAccount, r.deps.OAuth2Refresher)
 	if err != nil {
 		return r.record(ctx, email.ID, targetAccountID, targetFolder, domain.RestoreMethodIMAPAppend,
-			fmt.Errorf("decrypting target account password: %w", err))
+			fmt.Errorf("resolving target account credentials: %w", err))
 	}
 
-	appendErr := r.tryAppend(ctx, targetAccount, password, targetFolder, email, content)
+	appendErr := r.tryAppend(ctx, targetAccount, auth, targetFolder, email, content)
 	if appendErr == nil {
 		return r.record(ctx, email.ID, targetAccountID, targetFolder, domain.RestoreMethodIMAPAppend, nil)
 	}
 	r.deps.Logger.Warn("restore: IMAP APPEND failed, falling back to SMTP",
 		zap.Int64("email_id", email.ID), zap.Error(appendErr))
 
-	smtpErr := r.trySMTP(ctx, targetAccount, password, content)
+	smtpErr := r.trySMTP(ctx, targetAccount, auth, content)
 	if smtpErr == nil {
 		return r.record(ctx, email.ID, targetAccountID, targetFolder, domain.RestoreMethodSMTP, nil)
 	}
@@ -125,10 +131,10 @@ func (r *Restorer) loadContent(ctx context.Context, email *domain.Email) ([]byte
 	return content, nil
 }
 
-func (r *Restorer) tryAppend(ctx context.Context, targetAccount *domain.Account, password, targetFolder string, email *domain.Email, content []byte) error {
+func (r *Restorer) tryAppend(ctx context.Context, targetAccount *domain.Account, auth account.IMAPAuth, targetFolder string, email *domain.Email, content []byte) error {
 	conn, err := imapclient.Connect(ctx, imapclient.ConnectOptions{
 		Host: targetAccount.IMAPHost, Port: targetAccount.IMAPPort, TLS: targetAccount.IMAPTLS,
-		Username: targetAccount.IMAPUsername, Password: password,
+		Username: targetAccount.IMAPUsername, Password: auth.Password, OAuth2AccessToken: auth.OAuth2AccessToken,
 	})
 	if err != nil {
 		return fmt.Errorf("connecting to target account: %w", err)
