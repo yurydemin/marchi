@@ -39,7 +39,7 @@ const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 
 
 // New builds the Fiber app: recover/rate-limit/CSRF middleware, the
 // locked-state gate, and the /unlock endpoint (поправки #2/#3,
-// NFR-SC-06/07). If MAILVAULT_MASTER_KEY is set, the vault is unlocked
+// NFR-SC-06/07). If MARCHI_MASTER_KEY is set, the vault is unlocked
 // process-wide immediately — matching how every Phase 1 CLI command
 // already treats that env var (NFR-SC-01) — though, per unlock.go's doc
 // comment, that alone doesn't authenticate any browser session; a fresh
@@ -107,7 +107,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 }
 
 // unlockFromEnv mirrors cmd/marchi's own unlockMasterKey for the
-// env-var path (NFR-SC-01): if MAILVAULT_MASTER_KEY is set, unlock the
+// env-var path (NFR-SC-01): if MARCHI_MASTER_KEY is set, unlock the
 // vault right away instead of waiting for an interactive web /unlock.
 // Unlike the CLI, there's no interactive stdin fallback here — a server
 // with no env var and no browser unlock yet just stays locked.

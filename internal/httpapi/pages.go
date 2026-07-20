@@ -14,7 +14,7 @@ import (
 // populated (and only read by the template) when Unlocked is true.
 //
 // Unlocked reflects the browser's own session (sessionUnlocked), not
-// whether the vault is unlocked process-wide: with MAILVAULT_MASTER_KEY
+// whether the vault is unlocked process-wide: with MARCHI_MASTER_KEY
 // set, the backend exists from startup, but a browser that never POSTed
 // /unlock still has no session and must see the unlock form, exactly like
 // the JSON API.
@@ -71,7 +71,7 @@ func pageBackend(c *fiber.Ctx, vault *vaultState, store *session.Store) (*backen
 // scope — that gate only covers /api/v1 and /ws (see its doc comment) —
 // so each of them must check the browser's own session itself. Without
 // this, an unauthenticated request could mutate a vault some other
-// session (or MAILVAULT_MASTER_KEY) already unlocked, defeating the
+// session (or MARCHI_MASTER_KEY) already unlocked, defeating the
 // per-browser-session auth model entirely.
 func requireUnlockedSession(c *fiber.Ctx, vault *vaultState, store *session.Store) (*backend, error) {
 	if !sessionUnlocked(c, store) {

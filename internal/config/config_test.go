@@ -95,10 +95,10 @@ func TestLoad_CustomDataDirDerivesAllPaths(t *testing.T) {
 	}
 }
 
-// TestLoad_DataDirEnvOverrideDerivesAllPaths is the MAILVAULT_DATA_DIR
+// TestLoad_DataDirEnvOverrideDerivesAllPaths is the MARCHI_DATA_DIR
 // analog of TestLoad_CustomDataDirDerivesAllPaths.
 func TestLoad_DataDirEnvOverrideDerivesAllPaths(t *testing.T) {
-	t.Setenv("MAILVAULT_DATA_DIR", "/from/env")
+	t.Setenv("MARCHI_DATA_DIR", "/from/env")
 
 	cfg, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
 	if err != nil {
@@ -157,9 +157,9 @@ http:
 		t.Fatal(err)
 	}
 
-	t.Setenv("MAILVAULT_DATA_DIR", "/from/env")
-	t.Setenv("MAILVAULT_HTTP_PORT", "7070")
-	t.Setenv("MAILVAULT_LOG_LEVEL", "warn")
+	t.Setenv("MARCHI_DATA_DIR", "/from/env")
+	t.Setenv("MARCHI_HTTP_PORT", "7070")
+	t.Setenv("MARCHI_LOG_LEVEL", "warn")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -177,9 +177,9 @@ http:
 }
 
 func TestLoad_InvalidPortEnv(t *testing.T) {
-	t.Setenv("MAILVAULT_HTTP_PORT", "not-a-number")
+	t.Setenv("MARCHI_HTTP_PORT", "not-a-number")
 	if _, err := Load(filepath.Join(t.TempDir(), "missing.yaml")); err == nil {
-		t.Fatal("expected error for invalid MAILVAULT_HTTP_PORT, got nil")
+		t.Fatal("expected error for invalid MARCHI_HTTP_PORT, got nil")
 	}
 }
 

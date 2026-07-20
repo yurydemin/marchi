@@ -24,7 +24,7 @@ import (
 // confirm the archive ends up complete, with no duplicate or missing
 // messages and no database corruption.
 func TestCrashRecovery_KillMidSync_ResumesWithoutDuplicatesOrLoss(t *testing.T) {
-	binary := buildMailvault(t)
+	binary := buildMarchi(t)
 	srv := dovecot.Start(t, "testuser@dovecot.local", "testpass123")
 
 	const (
@@ -37,8 +37,8 @@ func TestCrashRecovery_KillMidSync_ResumesWithoutDuplicatesOrLoss(t *testing.T) 
 	}
 
 	dataDir := t.TempDir()
-	runMailvault(t, binary, dataDir, nil, masterKey+"\n"+masterKey+"\n", "unlock")
-	runMailvault(t, binary, dataDir, nil, masterKey+"\ntestpass123\n",
+	runMarchi(t, binary, dataDir, nil, masterKey+"\n"+masterKey+"\n", "unlock")
+	runMarchi(t, binary, dataDir, nil, masterKey+"\ntestpass123\n",
 		"add-account", email, "--host", srv.Host, "--port", fmt.Sprint(srv.Port), "--tls", "none")
 
 	killMidSync(t, binary, dataDir, masterKey, email)
@@ -56,7 +56,7 @@ func TestCrashRecovery_KillMidSync_ResumesWithoutDuplicatesOrLoss(t *testing.T) 
 	t.Logf("archived %d/%d messages before SIGKILL", partial, totalMessages)
 
 	// Resume: a fresh process, same data dir.
-	out := runMailvault(t, binary, dataDir, nil, masterKey+"\n", "sync", email)
+	out := runMarchi(t, binary, dataDir, nil, masterKey+"\n", "sync", email)
 	t.Logf("resume sync output:\n%s", out)
 
 	final := countEmails(t, dbPath)
@@ -80,10 +80,10 @@ func testMessage(i int) []byte {
 		i, i, i, strings.Repeat("padding ", 200)))
 }
 
-// buildMailvault compiles the real CLI binary once per test run — the
+// buildMarchi compiles the real CLI binary once per test run — the
 // point of this test is exercising the actual process lifecycle
 // (SIGKILL, restart, on-disk recovery), not internal Go function calls.
-func buildMailvault(t *testing.T) string {
+func buildMarchi(t *testing.T) string {
 	t.Helper()
 	binPath := filepath.Join(t.TempDir(), "marchi")
 	cmd := exec.Command("go", "build", "-o", binPath, ".")
@@ -93,11 +93,11 @@ func buildMailvault(t *testing.T) string {
 	return binPath
 }
 
-// runMailvault runs the compiled binary with args in dataDir (its working
+// runMarchi runs the compiled binary with args in dataDir (its working
 // directory — the zero-config default paths, e.g. "./data/marchi.db",
 // then resolve inside the test's isolated temp dir), feeding stdin and
 // failing the test on a non-zero exit.
-func runMailvault(t *testing.T, binary, dataDir string, env []string, stdin string, args ...string) string {
+func runMarchi(t *testing.T, binary, dataDir string, env []string, stdin string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(binary, args...)
 	cmd.Dir = dataDir
@@ -121,7 +121,7 @@ func killMidSync(t *testing.T, binary, dataDir, masterKey, email string) {
 	t.Helper()
 	cmd := exec.Command(binary, "sync", email)
 	cmd.Dir = dataDir
-	cmd.Env = append(os.Environ(), "MAILVAULT_MASTER_KEY="+masterKey)
+	cmd.Env = append(os.Environ(), "MARCHI_MASTER_KEY="+masterKey)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -206,7 +206,7 @@ func assertNoGapsInUIDs(t *testing.T, dbPath string, total int) {
 
 // assertLocalPathsExist checks emails.local_path against disk. local_path
 // is stored relative to the marchi subprocess's own working directory
-// (dataDir, per runMailvault/killMidSync setting cmd.Dir) — this test
+// (dataDir, per runMarchi/killMidSync setting cmd.Dir) — this test
 // process's cwd is the Go package directory instead, so paths are resolved
 // against dataDir explicitly rather than passed to os.Stat as-is.
 func assertLocalPathsExist(t *testing.T, dbPath, dataDir string) {

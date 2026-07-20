@@ -4,7 +4,7 @@ import "sync"
 
 // vaultState holds the process-wide Master Key and the backend built from
 // it, once the vault has been unlocked by whichever channel got there
-// first: MAILVAULT_MASTER_KEY at startup, or a web POST /unlock request.
+// first: MARCHI_MASTER_KEY at startup, or a web POST /unlock request.
 // See unlock.go's doc comment for why this is deliberately kept separate
 // from a browser's own session — the vault being unlocked and a given
 // browser being authenticated are related but distinct events.

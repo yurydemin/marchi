@@ -18,7 +18,7 @@ import (
 // sessionUnlockedKey is the session data key marking a browser as
 // authenticated (поправка #2: "Master Key = логин в Web UI"). Deliberately
 // distinct from vaultState: even when the vault is already unlocked
-// process-wide via MAILVAULT_MASTER_KEY at startup, a fresh browser still
+// process-wide via MARCHI_MASTER_KEY at startup, a fresh browser still
 // has no session and must submit the password once via POST /unlock to
 // get one — the process already holding the key doesn't grant network
 // access to it for free.

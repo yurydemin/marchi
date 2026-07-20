@@ -233,7 +233,7 @@
 - `restore_logs` (id, email_id, target_account_id, target_folder, method, status, error_msg, created_at)
 - `s3_upload_queue` (id, email_id, attachment_id, s3_key, local_path, status, retry_count, error_msg, created_at, updated_at)
 
-**FR-ST-04:** Master Key: при первом запуске система требует от пользователя ввода пароля (минимум 12 символов). От пароля производится ключ через Argon2id (salt генерируется случайно и хранится в `{data_dir}/.salt`). Master Key не хранится на диске. При перезапуске — повторный ввод пароля. Для unattended-запуска допускается переменная окружения `MAILVAULT_MASTER_KEY` с предупреждением в логах.
+**FR-ST-04:** Master Key: при первом запуске система требует от пользователя ввода пароля (минимум 12 символов). От пароля производится ключ через Argon2id (salt генерируется случайно и хранится в `{data_dir}/.salt`). Master Key не хранится на диске. При перезапуске — повторный ввод пароля. Для unattended-запуска допускается переменная окружения `MARCHI_MASTER_KEY` с предупреждением в логах.
 
 **FR-ST-05:** Master Key используется для:
 - Шифрования IMAP-паролей и OAuth2 токенов перед записью в SQLite.
@@ -421,7 +421,7 @@ s3://{bucket}/marchi/v1/accounts/{account_id}/attachments/{email_sha256}/{filena
 
 ### 4.3. Безопасность
 
-**NFR-SC-01:** Master Key не хранится на диске в открытом виде. При запуске — интерактивный запрос пароля (CLI) или ввод через Web UI. Переменная окружения `MAILVAULT_MASTER_KEY` допустима только с предупреждением `SECURITY WARNING` в логах.
+**NFR-SC-01:** Master Key не хранится на диске в открытом виде. При запуске — интерактивный запрос пароля (CLI) или ввод через Web UI. Переменная окружения `MARCHI_MASTER_KEY` допустима только с предупреждением `SECURITY WARNING` в логах.
 
 **NFR-SC-02:** Все sensitive-данные (IMAP пароли, OAuth2 токены, S3 keys) шифруются AES-256-GCM перед записью в SQLite.
 
@@ -441,7 +441,7 @@ s3://{bucket}/marchi/v1/accounts/{account_id}/attachments/{email_sha256}/{filena
 
 **NFR-DP-02:** Zero-config запуск: `./marchi` создаёт `{cwd}/data/` и запускает веб-интерфейс на `localhost:8080`.
 
-**NFR-DP-03:** Конфигурация через `config.yaml` или переменные окружения (`MAILVAULT_DATA_DIR`, `MAILVAULT_HTTP_PORT`, `MAILVAULT_LOG_LEVEL`). Переменные окружения имеют приоритет над YAML.
+**NFR-DP-03:** Конфигурация через `config.yaml` или переменные окружения (`MARCHI_DATA_DIR`, `MARCHI_HTTP_PORT`, `MARCHI_LOG_LEVEL`). Переменные окружения имеют приоритет над YAML.
 
 **NFR-DP-04:** Systemd unit файл в комплекте (`marchi.service`). Windows Service — команда `marchi service install`.
 
@@ -741,7 +741,7 @@ http:
     # key_file: "/path/to/key.pem"
 
 security:
-  master_key_env: "MAILVAULT_MASTER_KEY"
+  master_key_env: "MARCHI_MASTER_KEY"
   argon2:
     memory: 65536
     iterations: 3

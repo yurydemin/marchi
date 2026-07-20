@@ -11,7 +11,7 @@ import (
 )
 
 // unlockMasterKey implements FR-ST-04 / NFR-SC-01's source priority:
-// MAILVAULT_MASTER_KEY env var first (unattended startup, with the
+// MARCHI_MASTER_KEY env var first (unattended startup, with the
 // mandated SECURITY WARNING logged), otherwise an interactive prompt —
 // which asks twice to set a brand new password on first run, once to
 // unlock an existing vault otherwise.

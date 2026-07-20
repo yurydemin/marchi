@@ -121,7 +121,7 @@ func Defaults(dataDir string) *Config {
 			},
 		},
 		Security: SecurityConfig{
-			MasterKeyEnv: "MAILVAULT_MASTER_KEY",
+			MasterKeyEnv: "MARCHI_MASTER_KEY",
 			Argon2: Argon2Config{
 				Memory:      65536,
 				Iterations:  3,
@@ -165,19 +165,19 @@ var envOverrides = []struct {
 	name  string
 	apply func(*Config, string) error
 }{
-	{"MAILVAULT_DATA_DIR", func(c *Config, v string) error {
+	{"MARCHI_DATA_DIR", func(c *Config, v string) error {
 		c.App.DataDir = v
 		return nil
 	}},
-	{"MAILVAULT_HTTP_PORT", func(c *Config, v string) error {
+	{"MARCHI_HTTP_PORT", func(c *Config, v string) error {
 		port, err := strconv.Atoi(v)
 		if err != nil {
-			return fmt.Errorf("MAILVAULT_HTTP_PORT: invalid port %q: %w", v, err)
+			return fmt.Errorf("MARCHI_HTTP_PORT: invalid port %q: %w", v, err)
 		}
 		c.HTTP.Port = port
 		return nil
 	}},
-	{"MAILVAULT_LOG_LEVEL", func(c *Config, v string) error {
+	{"MARCHI_LOG_LEVEL", func(c *Config, v string) error {
 		c.App.LogLevel = v
 		return nil
 	}},
@@ -186,7 +186,7 @@ var envOverrides = []struct {
 // Load reads config.yaml at path (if present — its absence is not an error,
 // zero-config just runs on defaults), then applies env var overrides on top.
 //
-// data_dir is resolved in a first pass (YAML, then MAILVAULT_DATA_DIR)
+// data_dir is resolved in a first pass (YAML, then MARCHI_DATA_DIR)
 // before Defaults is called, so Database.SQLite.Path/Search.IndexPath/
 // Storage.MaildirPath/Storage.Cache.Path — all derived from dataDir —
 // come out rooted at the user's chosen directory even when the config
@@ -220,7 +220,7 @@ func Load(path string) (*Config, error) {
 			return nil, fmt.Errorf("reading %s: %w", path, err)
 		}
 	}
-	if v, ok := os.LookupEnv("MAILVAULT_DATA_DIR"); ok {
+	if v, ok := os.LookupEnv("MARCHI_DATA_DIR"); ok {
 		dataDir = v
 	}
 
