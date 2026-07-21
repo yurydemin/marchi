@@ -102,6 +102,7 @@
             <td class="px-4 py-2"><input type="checkbox" class="restore-checkbox" data-email-id="{{.EmailID}}"></td>
             <td class="max-w-xs truncate px-4 py-2">
               <a class="font-medium text-slate-900 hover:underline" href="{{.ViewURL}}">{{if .Subject}}{{.Subject}}{{else}}(no subject){{end}}</a>
+              {{if .InS3}}<span class="ml-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600" title="Stored in S3, loaded on demand">S3</span>{{end}}
               <div class="truncate text-xs text-slate-400">{{.AccountEmail}} &middot; {{.FolderName}}</div>
             </td>
             <td class="max-w-[16rem] truncate px-4 py-2 text-slate-600">{{.From}}</td>
@@ -130,7 +131,10 @@
     <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <div class="mb-4 flex items-start justify-between gap-4">
         <div class="min-w-0">
-          <h2 class="truncate text-lg font-semibold">{{if .Viewer.Subject}}{{.Viewer.Subject}}{{else}}(no subject){{end}}</h2>
+          <h2 class="truncate text-lg font-semibold">
+            {{if .Viewer.Subject}}{{.Viewer.Subject}}{{else}}(no subject){{end}}
+            {{if .Viewer.InS3}}<span class="ml-1 rounded-full bg-slate-100 px-1.5 py-0.5 align-middle text-xs font-medium text-slate-600" title="Stored in S3, loaded on demand">S3</span>{{end}}
+          </h2>
           <dl class="mt-1 text-sm text-slate-500">
             <div><span class="font-medium text-slate-600">From:</span> {{.Viewer.From}}</div>
             {{if .Viewer.To}}<div><span class="font-medium text-slate-600">To:</span> {{range $i, $v := .Viewer.To}}{{if $i}}, {{end}}{{$v}}{{end}}</div>{{end}}

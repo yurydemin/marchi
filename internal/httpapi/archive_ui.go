@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"html/template"
 	"net/url"
-	"os"
 	"strconv"
 	"time"
 
@@ -45,6 +44,7 @@ type archiveResultRow struct {
 	Date           time.Time
 	Size           int64
 	HasAttachments bool
+	InS3           bool
 	AccountEmail   string
 	FolderName     string
 	ViewURL        string
@@ -76,6 +76,7 @@ type archiveViewer struct {
 	To          []string
 	Cc          []string
 	Date        time.Time
+	InS3        bool
 	BodyHTML    template.HTML
 	BodyText    string
 	Attachments []archiveAttachment
@@ -152,6 +153,19 @@ func handleArchivePage(vault *vaultState, store *session.Store, pages map[string
 			return fiber.NewError(fiber.StatusInternalServerError, "search failed")
 		}
 
+		emailIDs := make([]int64, len(result.Hits))
+		for i, h := range result.Hits {
+			emailIDs[i] = h.EmailID
+		}
+		// storage_location isn't part of the search index (it's mutable
+		// state retention changes independently of reindexing — see
+		// EmailsRepo.ListStorageLocations' doc comment), so the "in S3"
+		// badge needs this separate batch lookup for the current page.
+		storageLocations, err := b.emailsRepo.ListStorageLocations(c.Context(), emailIDs)
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "loading storage locations failed")
+		}
+
 		filterValues := archiveFilterValues(c)
 		rows := make([]archiveResultRow, len(result.Hits))
 		viewID, hasView := parseInt64Query(c, "view")
@@ -162,7 +176,7 @@ func handleArchivePage(vault *vaultState, store *session.Store, pages map[string
 			rowValues.Set("view", strconv.FormatInt(h.EmailID, 10))
 			rows[i] = archiveResultRow{
 				EmailID: h.EmailID, Subject: h.Subject, From: h.From, Date: h.Date,
-				Size: h.Size, HasAttachments: h.HasAttachments,
+				Size: h.Size, HasAttachments: h.HasAttachments, InS3: storageLocations[h.EmailID] == "s3",
 				AccountEmail: accountEmailByID[h.AccountID], FolderName: folderNameByID[h.FolderID],
 				ViewURL:  "/archive?" + rowValues.Encode(),
 				Selected: hasView && h.EmailID == viewID,
@@ -264,17 +278,16 @@ func buildArchiveViewer(c *fiber.Ctx, b *backend, emailID int64, rows []archiveR
 
 	v := &archiveViewer{
 		EmailID: e.ID, Subject: e.Subject, From: e.FromAddr, To: e.ToAddrs, Cc: e.CcAddrs, Date: e.Date,
+		InS3:        e.StorageLocation == "s3",
 		Attachments: attResp,
 		DownloadURL: fmt.Sprintf("/api/v1/emails/%d/download", e.ID),
 	}
-	if e.StorageLocation == "local" && e.LocalPath != "" {
-		if raw, err := os.ReadFile(e.LocalPath); err == nil {
-			parts := mimeparse.ParseBodyParts(raw)
-			if html := sanitizeEmailHTML(parts.HTML); html != "" {
-				v.BodyHTML = template.HTML(html)
-			} else {
-				v.BodyText = parts.Text
-			}
+	if raw, err := loadEmailContent(c.Context(), b, e); err == nil {
+		parts := mimeparse.ParseBodyParts(raw)
+		if html := sanitizeEmailHTML(parts.HTML); html != "" {
+			v.BodyHTML = template.HTML(html)
+		} else {
+			v.BodyText = parts.Text
 		}
 	}
 

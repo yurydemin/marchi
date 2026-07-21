@@ -234,6 +234,45 @@ func (r *EmailsRepo) ListS3OnlyDueForDeletion(ctx context.Context, accountID int
 		ORDER BY id`, accountID, formatSQLiteTime(cutoff))
 }
 
+// ListStorageLocations returns storage_location for each of ids, keyed by
+// email ID — Archive UI's "in S3" badge needs this per search-results
+// page (up to Limit rows), and a search hit alone doesn't carry it: it's
+// mutable state (retention moves an email from local to s3 independently
+// of reindexing) that would go stale if it were baked into the index.
+func (r *EmailsRepo) ListStorageLocations(ctx context.Context, ids []int64) (map[int64]string, error) {
+	locations := make(map[int64]string, len(ids))
+	if len(ids) == 0 {
+		return locations, nil
+	}
+
+	placeholders := make([]byte, 0, len(ids)*2)
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		if i > 0 {
+			placeholders = append(placeholders, ',')
+		}
+		placeholders = append(placeholders, '?')
+		args[i] = id
+	}
+
+	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(
+		`SELECT id, storage_location FROM emails WHERE id IN (%s)`, placeholders), args...)
+	if err != nil {
+		return nil, fmt.Errorf("repo: listing storage locations: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int64
+		var loc string
+		if err := rows.Scan(&id, &loc); err != nil {
+			return nil, fmt.Errorf("repo: scanning storage location: %w", err)
+		}
+		locations[id] = loc
+	}
+	return locations, rows.Err()
+}
+
 func (r *EmailsRepo) queryEmails(ctx context.Context, query string, args ...any) ([]*domain.Email, error) {
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {

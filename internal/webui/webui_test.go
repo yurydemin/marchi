@@ -281,6 +281,7 @@ type testArchiveResult struct {
 	Date           time.Time
 	Size           int64
 	HasAttachments bool
+	InS3           bool
 	AccountEmail   string
 	FolderName     string
 	ViewURL        string
@@ -302,6 +303,7 @@ type testArchiveViewer struct {
 	To          []string
 	Cc          []string
 	Date        time.Time
+	InS3        bool
 	BodyHTML    template.HTML
 	BodyText    string
 	Attachments []testArchiveAttachment
@@ -383,11 +385,11 @@ func TestParse_ArchivePage_RendersTreeResultsAndViewer(t *testing.T) {
 			{ID: 1, Email: "a@example.com", Folders: []testArchiveFolder{{ID: 10, Name: "INBOX", URL: "/archive?account_id=1&folder_id=10"}}},
 		},
 		Results: []testArchiveResult{
-			{EmailID: 100, Subject: "Hello", From: "sender@example.com", Date: when, Size: 2048, ViewURL: "/archive?view=100", Selected: true},
+			{EmailID: 100, Subject: "Hello", From: "sender@example.com", Date: when, Size: 2048, ViewURL: "/archive?view=100", Selected: true, InS3: true},
 		},
 		Total: 1, Offset: 0, Limit: 20,
 		Viewer: &testArchiveViewer{
-			EmailID: 100, Subject: "Hello", From: "sender@example.com", Date: when,
+			EmailID: 100, Subject: "Hello", From: "sender@example.com", Date: when, InS3: true,
 			BodyHTML: template.HTML("<p>Hi there</p>"), DownloadURL: "/api/v1/emails/100/download",
 			Attachments: []testArchiveAttachment{{ID: 5, Filename: "file.pdf", Size: 1024, DownloadURL: "/api/v1/emails/100/attachments/5/download"}},
 			RestoreLogs: []testArchiveRestoreLog{
@@ -401,7 +403,7 @@ func TestParse_ArchivePage_RendersTreeResultsAndViewer(t *testing.T) {
 		t.Fatalf("ExecuteTemplate: %v", err)
 	}
 	out := buf.String()
-	for _, want := range []string{"INBOX", "Hello", "sender@example.com", "<p>Hi there</p>", "file.pdf", "b@example.com", "imap_append"} {
+	for _, want := range []string{"INBOX", "Hello", "sender@example.com", "<p>Hi there</p>", "file.pdf", "b@example.com", "imap_append", ">S3<"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("rendered output missing %q, got:\n%s", want, out)
 		}

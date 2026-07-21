@@ -320,3 +320,56 @@ func TestEmailsRepo_Stats_Empty(t *testing.T) {
 		t.Errorf("EmailsByAccount = %v, want empty", stats.EmailsByAccount)
 	}
 }
+
+func TestEmailsRepo_ListStorageLocations(t *testing.T) {
+	emails, folders, accounts, w := openTestEmailsRepo(t)
+	ctx := context.Background()
+
+	accountID := mustCreateAccount(t, accounts)
+	folder := mustCreateFolder(t, folders, accountID, "INBOX")
+
+	var localID, s3ID int64
+	err := w.Do(ctx, func(tx *sql.Tx) error {
+		var err error
+		localID, err = emails.Insert(ctx, tx, &domain.Email{
+			MessageID: "local@example.com", AccountID: accountID, FolderID: folder.ID, UID: 1,
+			StorageLocation: "local", LocalPath: "/data/local.eml",
+		})
+		if err != nil {
+			return err
+		}
+		s3ID, err = emails.Insert(ctx, tx, &domain.Email{
+			MessageID: "s3@example.com", AccountID: accountID, FolderID: folder.ID, UID: 2,
+			StorageLocation: "s3",
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+
+	locations, err := emails.ListStorageLocations(ctx, []int64{localID, s3ID, 999999})
+	if err != nil {
+		t.Fatalf("ListStorageLocations: %v", err)
+	}
+	if locations[localID] != "local" {
+		t.Errorf("locations[localID] = %q, want %q", locations[localID], "local")
+	}
+	if locations[s3ID] != "s3" {
+		t.Errorf("locations[s3ID] = %q, want %q", locations[s3ID], "s3")
+	}
+	if _, ok := locations[999999]; ok {
+		t.Error("locations should not contain an entry for a nonexistent id")
+	}
+}
+
+func TestEmailsRepo_ListStorageLocations_EmptyInput(t *testing.T) {
+	emails, _, _, _ := openTestEmailsRepo(t)
+	locations, err := emails.ListStorageLocations(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListStorageLocations: %v", err)
+	}
+	if len(locations) != 0 {
+		t.Errorf("locations = %v, want empty", locations)
+	}
+}
