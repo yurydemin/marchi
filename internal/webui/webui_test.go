@@ -308,6 +308,17 @@ type testArchiveViewer struct {
 	DownloadURL string
 	PrevURL     string
 	NextURL     string
+	RestoreLogs []testArchiveRestoreLog
+}
+
+type testArchiveRestoreLog struct {
+	ID                 int64
+	TargetAccountEmail string
+	TargetFolder       string
+	Method             string
+	Status             string
+	ErrorMsg           string
+	CreatedAt          time.Time
 }
 
 func TestParse_ReturnsArchivePage(t *testing.T) {
@@ -379,6 +390,9 @@ func TestParse_ArchivePage_RendersTreeResultsAndViewer(t *testing.T) {
 			EmailID: 100, Subject: "Hello", From: "sender@example.com", Date: when,
 			BodyHTML: template.HTML("<p>Hi there</p>"), DownloadURL: "/api/v1/emails/100/download",
 			Attachments: []testArchiveAttachment{{ID: 5, Filename: "file.pdf", Size: 1024, DownloadURL: "/api/v1/emails/100/attachments/5/download"}},
+			RestoreLogs: []testArchiveRestoreLog{
+				{ID: 1, TargetAccountEmail: "b@example.com", TargetFolder: "INBOX", Method: "imap_append", Status: "completed", CreatedAt: when},
+			},
 		},
 	}
 
@@ -387,7 +401,7 @@ func TestParse_ArchivePage_RendersTreeResultsAndViewer(t *testing.T) {
 		t.Fatalf("ExecuteTemplate: %v", err)
 	}
 	out := buf.String()
-	for _, want := range []string{"INBOX", "Hello", "sender@example.com", "<p>Hi there</p>", "file.pdf"} {
+	for _, want := range []string{"INBOX", "Hello", "sender@example.com", "<p>Hi there</p>", "file.pdf", "b@example.com", "imap_append"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("rendered output missing %q, got:\n%s", want, out)
 		}

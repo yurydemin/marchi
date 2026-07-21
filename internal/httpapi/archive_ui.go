@@ -59,6 +59,16 @@ type archiveAttachment struct {
 	DownloadURL string
 }
 
+type archiveRestoreLogRow struct {
+	ID                 int64
+	TargetAccountEmail string
+	TargetFolder       string
+	Method             string
+	Status             string
+	ErrorMsg           string
+	CreatedAt          time.Time
+}
+
 type archiveViewer struct {
 	EmailID     int64
 	Subject     string
@@ -72,6 +82,7 @@ type archiveViewer struct {
 	DownloadURL string
 	PrevURL     string
 	NextURL     string
+	RestoreLogs []archiveRestoreLogRow
 }
 
 type archivePageData struct {
@@ -186,7 +197,7 @@ func handleArchivePage(vault *vaultState, store *session.Store, pages map[string
 		}
 
 		if hasView {
-			data.Viewer = buildArchiveViewer(c, b, viewID, rows)
+			data.Viewer = buildArchiveViewer(c, b, viewID, rows, accountEmailByID)
 		}
 
 		return pages["archive"].ExecuteTemplate(c, "layout", data)
@@ -234,7 +245,7 @@ func parseInt64Query(c *fiber.Ctx, name string) (int64, bool) {
 // resolved from rows, the current page's already-fetched results, so
 // opening an email never costs a second search call — this only moves
 // within the currently displayed page, not the full result set.
-func buildArchiveViewer(c *fiber.Ctx, b *backend, emailID int64, rows []archiveResultRow) *archiveViewer {
+func buildArchiveViewer(c *fiber.Ctx, b *backend, emailID int64, rows []archiveResultRow, accountEmailByID map[int64]string) *archiveViewer {
 	e, err := b.emailsRepo.GetByID(c.Context(), emailID)
 	if err != nil {
 		return nil
@@ -278,6 +289,16 @@ func buildArchiveViewer(c *fiber.Ctx, b *backend, emailID int64, rows []archiveR
 			v.NextURL = rows[i+1].ViewURL
 		}
 		break
+	}
+
+	if logs, err := b.restoreLogsRepo.ListByEmail(c.Context(), emailID); err == nil {
+		v.RestoreLogs = make([]archiveRestoreLogRow, len(logs))
+		for i, l := range logs {
+			v.RestoreLogs[i] = archiveRestoreLogRow{
+				ID: l.ID, TargetAccountEmail: accountEmailByID[l.TargetAccountID], TargetFolder: l.TargetFolder,
+				Method: l.Method, Status: l.Status, ErrorMsg: l.ErrorMsg, CreatedAt: l.CreatedAt,
+			}
+		}
 	}
 	return v
 }

@@ -350,3 +350,101 @@ document.addEventListener("click", function (evt) {
       }
     });
 });
+
+// --- Archive page: restore selection + trigger --------------------------
+//
+// Unlike the rest of Archive UI (plain GET, full-page reloads), restore is
+// a fetch()+watchJobProgress trigger like Settings' reindex button — a
+// restore is a background job with a job_id and WS progress, not a page
+// state change a URL can capture.
+
+function updateRestoreButtonState() {
+  const btn = document.querySelector('[data-action="trigger-restore"]');
+  if (!btn) {
+    return;
+  }
+  const anySelected = document.querySelectorAll(".restore-checkbox:checked").length > 0;
+  const account = document.getElementById("restore-target-account");
+  const folder = document.getElementById("restore-target-folder");
+  btn.disabled = !(anySelected && account && account.value && folder && folder.value);
+}
+
+document.addEventListener("change", function (evt) {
+  if (evt.target.id === "restore-select-all") {
+    const checked = evt.target.checked;
+    document.querySelectorAll(".restore-checkbox").forEach(function (cb) {
+      cb.checked = checked;
+    });
+    updateRestoreButtonState();
+    return;
+  }
+  if (evt.target.classList.contains("restore-checkbox")) {
+    updateRestoreButtonState();
+    return;
+  }
+  if (evt.target.id === "restore-target-account") {
+    const folderSelect = document.getElementById("restore-target-folder");
+    const tpl = document.querySelector('template[data-restore-folders-for="' + evt.target.value + '"]');
+    folderSelect.innerHTML = "";
+    if (!tpl) {
+      folderSelect.disabled = true;
+      folderSelect.innerHTML = '<option value="">Select account first&hellip;</option>';
+    } else {
+      folderSelect.disabled = false;
+      folderSelect.appendChild(tpl.content.cloneNode(true));
+    }
+    updateRestoreButtonState();
+    return;
+  }
+  if (evt.target.id === "restore-target-folder") {
+    updateRestoreButtonState();
+  }
+});
+
+document.addEventListener("click", function (evt) {
+  const btn = evt.target.closest('[data-action="trigger-restore"]');
+  if (!btn) {
+    return;
+  }
+  const emailIDs = Array.from(document.querySelectorAll(".restore-checkbox:checked")).map(function (cb) {
+    return Number(cb.dataset.emailId);
+  });
+  const targetAccountID = Number(document.getElementById("restore-target-account").value);
+  const targetFolder = document.getElementById("restore-target-folder").value;
+  const statusEl = document.getElementById("restore-status");
+  btn.disabled = true;
+  if (statusEl) {
+    statusEl.textContent = "Starting…";
+  }
+  connectJobProgressSocket()
+    .then(function () {
+      return fetch("/api/v1/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Csrf-Token": csrfToken() },
+        body: JSON.stringify({
+          email_ids: emailIDs,
+          target_account_id: targetAccountID,
+          target_folder: targetFolder,
+        }),
+      });
+    })
+    .then(function (res) {
+      return res.json();
+    })
+    .then(function (data) {
+      watchJobProgress(data.job_id, function (ev) {
+        if (statusEl) {
+          statusEl.textContent = ev.message;
+        }
+        if (ev.done) {
+          updateRestoreButtonState();
+        }
+      });
+    })
+    .catch(function () {
+      if (statusEl) {
+        statusEl.textContent = "Failed to start restore.";
+      }
+      updateRestoreButtonState();
+    });
+});
