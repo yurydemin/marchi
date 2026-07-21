@@ -41,6 +41,74 @@ document.addEventListener("htmx:afterRequest", function (evt) {
   form.reset();
 });
 
+// --- Generic /ws job-progress client -----------------------------------
+//
+// Shared by the Settings page's reindex button and the Archive page's
+// restore flow: both trigger a background job via a plain fetch() POST
+// that returns {job_id: "..."}, then want to show progress for that job
+// specifically as it arrives over the process-wide /ws feed. Every
+// connected client receives every event (internal/httpapi/ws.go's
+// wsHub.broadcast fans out to all of them); watchJobProgress filters by
+// job_id client-side and only calls back for the job it was asked about.
+// One WebSocket connection is opened lazily on first use and reused for
+// every subsequent job on the page.
+
+let jobProgressSocket = null;
+const jobProgressListeners = {};
+
+function ensureJobProgressSocket() {
+  if (jobProgressSocket && jobProgressSocket.readyState <= 1) {
+    return jobProgressSocket;
+  }
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  jobProgressSocket = new WebSocket(proto + "//" + window.location.host + "/ws");
+  jobProgressSocket.addEventListener("message", function (evt) {
+    let data;
+    try {
+      data = JSON.parse(evt.data);
+    } catch (e) {
+      return;
+    }
+    const cb = jobProgressListeners[data.job_id];
+    if (cb) {
+      cb(data);
+    }
+  });
+  return jobProgressSocket;
+}
+
+// connectJobProgressSocket resolves once the shared socket is actually
+// OPEN, so a caller can wait for it before triggering a job. Without this,
+// a job that finishes faster than the WebSocket handshake (e.g.
+// reindexing a near-empty index) broadcasts its progress/done events into
+// a socket nobody's listening on yet — wsHub.broadcast (internal/httpapi/
+// ws.go) is fire-and-forget, it doesn't buffer or replay for late joiners.
+function connectJobProgressSocket() {
+  const socket = ensureJobProgressSocket();
+  if (socket.readyState === WebSocket.OPEN) {
+    return Promise.resolve(socket);
+  }
+  return new Promise(function (resolve) {
+    socket.addEventListener("open", function () {
+      resolve(socket);
+    }, { once: true });
+  });
+}
+
+// watchJobProgress calls onEvent for every /ws message carrying jobId,
+// until an event with done:true arrives, at which point the listener
+// removes itself — callers don't need to unregister manually for a job
+// that's expected to finish (every job type here does).
+function watchJobProgress(jobId, onEvent) {
+  ensureJobProgressSocket();
+  jobProgressListeners[jobId] = function (ev) {
+    onEvent(ev);
+    if (ev.done) {
+      delete jobProgressListeners[jobId];
+    }
+  };
+}
+
 // --- Rules page: AND/OR condition-tree builder -----------------------
 //
 // A rule's conditions are an arbitrarily nested tree (internal/rules.
@@ -241,4 +309,44 @@ document.addEventListener("dragend", function () {
       tbody.innerHTML = html;
     })
     .catch(function () {});
+});
+
+// --- Settings page: reindex trigger -------------------------------------
+
+document.addEventListener("click", function (evt) {
+  const btn = evt.target.closest('[data-action="trigger-reindex"]');
+  if (!btn) {
+    return;
+  }
+  const statusEl = document.getElementById("reindex-status");
+  btn.disabled = true;
+  if (statusEl) {
+    statusEl.textContent = "Starting…";
+  }
+  connectJobProgressSocket()
+    .then(function () {
+      return fetch("/api/v1/admin/reindex", {
+        method: "POST",
+        headers: { "X-Csrf-Token": csrfToken() },
+      });
+    })
+    .then(function (res) {
+      return res.json();
+    })
+    .then(function (data) {
+      watchJobProgress(data.job_id, function (ev) {
+        if (statusEl) {
+          statusEl.textContent = ev.message;
+        }
+        if (ev.done) {
+          btn.disabled = false;
+        }
+      });
+    })
+    .catch(function () {
+      btn.disabled = false;
+      if (statusEl) {
+        statusEl.textContent = "Failed to start reindex.";
+      }
+    });
 });

@@ -93,6 +93,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	registerRulesAPI(app, vault)
 	registerS3Settings(app, vault)
 	registerOAuth2Settings(app, vault)
+	registerSettingsAPI(app, cfg, vault)
 	registerRestoreAPI(app, vault)
 	registerExport(app, vault)
 	registerStats(app, vault)
@@ -103,6 +104,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	registerAccountsPage(app, vault, store, pages)
 	registerArchivePage(app, vault, store, pages)
 	registerRulesPage(app, vault, store, pages)
+	registerSettingsPage(app, cfg, vault, store, pages)
 
 	return app, vault
 }

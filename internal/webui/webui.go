@@ -24,6 +24,7 @@ var pageFiles = map[string]string{
 	"accounts": "templates/accounts.html",
 	"archive":  "templates/archive.html",
 	"rules":    "templates/rules.html",
+	"settings": "templates/settings.html",
 }
 
 // Parse compiles every registered page once. Called at server startup
