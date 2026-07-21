@@ -50,8 +50,8 @@ func registerUnlock(app *fiber.App, cfg *config.Config, logger *zap.Logger, vaul
 			Iterations:  cfg.Security.Argon2.Iterations,
 			Parallelism: cfg.Security.Argon2.Parallelism,
 		}
-		key, err := masterkey.Unlock(req.Password,
-			masterkey.SaltPath(cfg.App.DataDir), masterkey.VerifyPath(cfg.App.DataDir), params)
+		dek, err := masterkey.UnlockDEK(req.Password,
+			masterkey.SaltPath(cfg.App.DataDir), masterkey.VerifyPath(cfg.App.DataDir), masterkey.DEKPath(cfg.App.DataDir), params)
 		switch {
 		case err == nil:
 			// fall through
@@ -62,7 +62,7 @@ func registerUnlock(app *fiber.App, cfg *config.Config, logger *zap.Logger, vaul
 			return fiber.NewError(fiber.StatusUnauthorized, "incorrect password")
 		}
 
-		if _, err := vault.unlock(key); err != nil {
+		if _, err := vault.unlock(dek); err != nil {
 			logger.Error("unlocking vault failed", zap.Error(err))
 			return fiber.NewError(fiber.StatusInternalServerError, "unlock failed")
 		}

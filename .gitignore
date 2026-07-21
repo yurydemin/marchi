@@ -15,6 +15,7 @@
 *.db-shm
 .salt
 .mk-verify
+.dek
 
 # Local config overrides
 config.local.yaml

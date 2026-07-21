@@ -125,13 +125,13 @@ func unlockFromEnv(cfg *config.Config, logger *zap.Logger, vault *vaultState) {
 		Iterations:  cfg.Security.Argon2.Iterations,
 		Parallelism: cfg.Security.Argon2.Parallelism,
 	}
-	key, err := masterkey.Unlock(envPassword,
-		masterkey.SaltPath(cfg.App.DataDir), masterkey.VerifyPath(cfg.App.DataDir), params)
+	dek, err := masterkey.UnlockDEK(envPassword,
+		masterkey.SaltPath(cfg.App.DataDir), masterkey.VerifyPath(cfg.App.DataDir), masterkey.DEKPath(cfg.App.DataDir), params)
 	if err != nil {
 		logger.Error("startup vault unlock via environment variable failed; vault remains locked", zap.Error(err))
 		return
 	}
-	if _, err := vault.unlock(key); err != nil {
+	if _, err := vault.unlock(dek); err != nil {
 		logger.Error("startup vault unlock via environment variable failed while initializing backend; vault remains locked", zap.Error(err))
 		return
 	}

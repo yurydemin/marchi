@@ -14,10 +14,15 @@ import (
 // MARCHI_MASTER_KEY env var first (unattended startup, with the
 // mandated SECURITY WARNING logged), otherwise an interactive prompt —
 // which asks twice to set a brand new password on first run, once to
-// unlock an existing vault otherwise.
+// unlock an existing vault otherwise. Returns the Data Encryption Key
+// (masterkey.UnlockDEK, not the password-derived Master Key itself) —
+// see internal/security/masterkey's package doc for why every caller
+// downstream (account.NewManager, s3config.NewManager, ...) wants that,
+// not the raw Master Key.
 func unlockMasterKey(cfg *config.Config, logger *zap.Logger) ([]byte, error) {
 	saltPath := masterkey.SaltPath(cfg.App.DataDir)
 	verifyPath := masterkey.VerifyPath(cfg.App.DataDir)
+	dekPath := masterkey.DEKPath(cfg.App.DataDir)
 	params := masterkey.Argon2Params{
 		Memory:      cfg.Security.Argon2.Memory,
 		Iterations:  cfg.Security.Argon2.Iterations,
@@ -29,12 +34,12 @@ func unlockMasterKey(cfg *config.Config, logger *zap.Logger) ([]byte, error) {
 	if envPassword, ok := os.LookupEnv(cfg.Security.MasterKeyEnv); ok && envPassword != "" {
 		logger.Warn("SECURITY WARNING: master key password supplied via environment variable; only use this for unattended/systemd startup",
 			zap.String("env_var", cfg.Security.MasterKeyEnv))
-		key, err := masterkey.Unlock(envPassword, saltPath, verifyPath, params)
+		dek, err := masterkey.UnlockDEK(envPassword, saltPath, verifyPath, dekPath, params)
 		if err != nil {
 			return nil, err
 		}
 		logger.Info("master key unlocked", zap.String("source", "env"), zap.Bool("first_run", firstRun))
-		return key, nil
+		return dek, nil
 	}
 
 	if firstRun {
@@ -44,10 +49,10 @@ func unlockMasterKey(cfg *config.Config, logger *zap.Logger) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	key, err := masterkey.Unlock(password, saltPath, verifyPath, params)
+	dek, err := masterkey.UnlockDEK(password, saltPath, verifyPath, dekPath, params)
 	if err != nil {
 		return nil, err
 	}
 	logger.Info("master key unlocked", zap.String("source", "interactive"), zap.Bool("first_run", firstRun))
-	return key, nil
+	return dek, nil
 }

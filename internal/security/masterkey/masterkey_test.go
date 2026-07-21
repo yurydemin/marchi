@@ -143,4 +143,134 @@ func TestSaltPath_VerifyPath(t *testing.T) {
 	if got, want := VerifyPath(dir), filepath.Join(dir, ".mk-verify"); got != want {
 		t.Errorf("VerifyPath = %q, want %q", got, want)
 	}
+	if got, want := DEKPath(dir), filepath.Join(dir, ".dek"); got != want {
+		t.Errorf("DEKPath = %q, want %q", got, want)
+	}
+}
+
+func TestLoadOrCreateDEK_BootstrapsThenPersists(t *testing.T) {
+	dir := t.TempDir()
+	dekPath := DEKPath(dir)
+	masterKey, err := Unlock("correct horse battery staple", SaltPath(dir), VerifyPath(dir), testParams())
+	if err != nil {
+		t.Fatalf("Unlock: %v", err)
+	}
+
+	dek1, err := LoadOrCreateDEK(masterKey, dekPath)
+	if err != nil {
+		t.Fatalf("LoadOrCreateDEK (bootstrap): %v", err)
+	}
+	if len(dek1) != 32 {
+		t.Fatalf("DEK length = %d, want 32", len(dek1))
+	}
+	if _, err := os.Stat(dekPath); err != nil {
+		t.Fatalf("DEK file not created: %v", err)
+	}
+
+	dek2, err := LoadOrCreateDEK(masterKey, dekPath)
+	if err != nil {
+		t.Fatalf("LoadOrCreateDEK (existing): %v", err)
+	}
+	if string(dek1) != string(dek2) {
+		t.Error("re-loading the DEK must return the same bytes, not generate a new one")
+	}
+}
+
+func TestLoadOrCreateDEK_WrongMasterKeyFails(t *testing.T) {
+	dir := t.TempDir()
+	dekPath := DEKPath(dir)
+	masterKey, err := Unlock("correct horse battery staple", SaltPath(dir), VerifyPath(dir), testParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadOrCreateDEK(masterKey, dekPath); err != nil {
+		t.Fatalf("bootstrapping DEK: %v", err)
+	}
+
+	wrongKey := make([]byte, 32)
+	if _, err := LoadOrCreateDEK(wrongKey, dekPath); err == nil {
+		t.Error("expected an error unwrapping the DEK with the wrong master key, got nil")
+	}
+}
+
+func TestUnlockDEK_SameDEKAcrossCalls(t *testing.T) {
+	dir := t.TempDir()
+	password := "correct horse battery staple"
+	saltPath, verifyPath, dekPath := SaltPath(dir), VerifyPath(dir), DEKPath(dir)
+
+	dek1, err := UnlockDEK(password, saltPath, verifyPath, dekPath, testParams())
+	if err != nil {
+		t.Fatalf("UnlockDEK (bootstrap): %v", err)
+	}
+	dek2, err := UnlockDEK(password, saltPath, verifyPath, dekPath, testParams())
+	if err != nil {
+		t.Fatalf("UnlockDEK (second call): %v", err)
+	}
+	if string(dek1) != string(dek2) {
+		t.Error("UnlockDEK must return the same DEK across calls with the same password")
+	}
+}
+
+// TestChangePassword_DEKSurvivesRotation is this feature's core promise:
+// after rotating the password, the OLD password no longer unlocks the
+// vault, the NEW password does, and — critically — it unlocks to the
+// EXACT SAME DEK, meaning nothing encrypted under it (IMAP passwords,
+// OAuth2 tokens, S3 credentials, already-uploaded S3 objects) needs any
+// re-encryption at all.
+func TestChangePassword_DEKSurvivesRotation(t *testing.T) {
+	dir := t.TempDir()
+	saltPath, verifyPath, dekPath := SaltPath(dir), VerifyPath(dir), DEKPath(dir)
+	oldPassword, newPassword := "correct horse battery staple", "new correct horse battery staple"
+
+	dekBefore, err := UnlockDEK(oldPassword, saltPath, verifyPath, dekPath, testParams())
+	if err != nil {
+		t.Fatalf("initial UnlockDEK: %v", err)
+	}
+
+	if err := ChangePassword(oldPassword, newPassword, dir, testParams()); err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+
+	if _, err := UnlockDEK(oldPassword, saltPath, verifyPath, dekPath, testParams()); !errors.Is(err, ErrIncorrectPassword) {
+		t.Errorf("old password after rotation: got %v, want ErrIncorrectPassword", err)
+	}
+
+	dekAfter, err := UnlockDEK(newPassword, saltPath, verifyPath, dekPath, testParams())
+	if err != nil {
+		t.Fatalf("UnlockDEK with new password: %v", err)
+	}
+	if string(dekBefore) != string(dekAfter) {
+		t.Error("DEK changed across password rotation — every encrypted secret would now be unreadable")
+	}
+}
+
+func TestChangePassword_WrongOldPasswordRejected(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := UnlockDEK("correct horse battery staple", SaltPath(dir), VerifyPath(dir), DEKPath(dir), testParams()); err != nil {
+		t.Fatal(err)
+	}
+
+	err := ChangePassword("wrong horse battery staple!!", "new correct horse battery staple", dir, testParams())
+	if !errors.Is(err, ErrIncorrectPassword) {
+		t.Errorf("got %v, want ErrIncorrectPassword", err)
+	}
+}
+
+func TestChangePassword_NewPasswordTooShort(t *testing.T) {
+	dir := t.TempDir()
+	oldPassword := "correct horse battery staple"
+	if _, err := UnlockDEK(oldPassword, SaltPath(dir), VerifyPath(dir), DEKPath(dir), testParams()); err != nil {
+		t.Fatal(err)
+	}
+
+	err := ChangePassword(oldPassword, "short", dir, testParams())
+	if !errors.Is(err, ErrPasswordTooShort) {
+		t.Errorf("got %v, want ErrPasswordTooShort", err)
+	}
+
+	// A rejected rotation must not have touched the store: the old
+	// password should still work.
+	if _, err := UnlockDEK(oldPassword, SaltPath(dir), VerifyPath(dir), DEKPath(dir), testParams()); err != nil {
+		t.Errorf("old password broken after a rejected rotation attempt: %v", err)
+	}
 }

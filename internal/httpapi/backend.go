@@ -121,8 +121,11 @@ type backend struct {
 // Scheduler (FR-SE-06) — the same wiring cmd_sync.go's CLI command does,
 // just done once for the long-running server process instead of once per
 // invocation. hub is where sync/reindex progress (FR-SE-07/FR-SR-04) gets
-// broadcast to any connected /ws client.
-func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *wsHub) (*backend, error) {
+// broadcast to any connected /ws client. dek is the Data Encryption Key
+// (vaultState.unlock's own parameter, ultimately from
+// masterkey.UnlockDEK) — every *Manager built here derives its subkeys
+// from this, not the raw password-derived Master Key.
+func newBackend(cfg *config.Config, logger *zap.Logger, dek []byte, hub *wsHub) (*backend, error) {
 	sqlDB, err := db.Open(cfg.Database.SQLite.Path)
 	if err != nil {
 		return nil, fmt.Errorf("httpapi: opening database: %w", err)
@@ -131,7 +134,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 	w := writer.New(sqlDB)
 	accountsRepo := repo.NewAccountsRepo(sqlDB, w)
 
-	mgr, err := account.NewManager(accountsRepo, masterKey)
+	mgr, err := account.NewManager(accountsRepo, dek)
 	if err != nil {
 		w.Close()
 		_ = db.Close(sqlDB)
@@ -151,7 +154,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 	}
 
 	s3ConfigRepo := repo.NewS3ConfigRepo(sqlDB, w)
-	s3ConfigMgr, err := s3config.NewManager(s3ConfigRepo, masterKey)
+	s3ConfigMgr, err := s3config.NewManager(s3ConfigRepo, dek)
 	if err != nil {
 		_ = idx.Close()
 		w.Close()
@@ -162,7 +165,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 	retentionSettingsRepo := repo.NewRetentionSettingsRepo(sqlDB, w)
 
 	oauth2AppsRepo := repo.NewOAuth2AppsRepo(sqlDB, w)
-	oauth2ConfigMgr, err := oauth2config.NewManager(oauth2AppsRepo, masterKey)
+	oauth2ConfigMgr, err := oauth2config.NewManager(oauth2AppsRepo, dek)
 	if err != nil {
 		_ = idx.Close()
 		w.Close()
@@ -241,7 +244,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 
 	s3UploaderCtx, stopS3Uploader := context.WithCancel(context.Background())
 	b.stopS3Uploader = stopS3Uploader
-	b.startS3Components(s3UploaderCtx, cfg, logger, masterKey)
+	b.startS3Components(s3UploaderCtx, cfg, logger, dek)
 
 	logger.Info("backend initialized: database opened, scheduler started")
 	return b, nil
@@ -257,7 +260,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, masterKey []byte, hub *w
 // configured — mirror uploads simply accumulate unclaimed in
 // s3_upload_queue, and restoring an S3-resident email fails with a clear
 // "S3 not configured" error instead of a lazy load.
-func (b *backend) startS3Components(ctx context.Context, cfg *config.Config, logger *zap.Logger, masterKey []byte) {
+func (b *backend) startS3Components(ctx context.Context, cfg *config.Config, logger *zap.Logger, dek []byte) {
 	s3cfg, err := b.s3ConfigManager.Get(context.Background())
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -286,7 +289,7 @@ func (b *backend) startS3Components(ctx context.Context, cfg *config.Config, log
 	}
 
 	uploader := s3store.NewUploader(s3store.UploaderDeps{
-		Client: client, QueueRepo: b.s3UploadQueueRepo, MasterKey: masterKey, Logger: logger,
+		Client: client, QueueRepo: b.s3UploadQueueRepo, MasterKey: dek, Logger: logger,
 		Workers: cfg.S3.UploadWorkers,
 		OnError: func(item *domain.S3UploadQueueItem, uploadErr error) {
 			b.wsHub.broadcast(s3UploadErrorWSEvent(item, uploadErr))
@@ -300,7 +303,7 @@ func (b *backend) startS3Components(ctx context.Context, cfg *config.Config, log
 	if err != nil {
 		logger.Warn("httpapi: building s3 lazy-load cache failed, restoring s3-resident emails not available", zap.Error(err))
 	} else {
-		b.lazyLoader = &s3store.LazyLoader{Client: client, Cache: cache, MasterKey: masterKey}
+		b.lazyLoader = &s3store.LazyLoader{Client: client, Cache: cache, MasterKey: dek}
 	}
 
 	logger.Info("httpapi: s3 mirroring and lazy-load restore available", zap.String("bucket", s3cfg.Bucket))
