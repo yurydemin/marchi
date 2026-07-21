@@ -144,6 +144,43 @@ func TestRestoreOne_LocalEmail_AppendsIntoRealDovecot(t *testing.T) {
 	}
 }
 
+// TestRestoreOne_RecentFlagStripped_StillAppendsIntoRealDovecot covers the
+// bug found live in Phase 3 step 18 (Restore UI): a message's stored
+// Flags reflect exactly what the archiving FETCH saw, which for a
+// freshly-synced message almost always includes \Recent — the source
+// server sets it on the first session to see the message, per RFC 3501.
+// APPEND-ing \Recent verbatim is rejected by a real (RFC-compliant)
+// server, since \Recent is server-assigned and no client may set it; this
+// only reproduces against a real Dovecot, not the fake in-process client
+// TestRestoreOne_AppendFails_FallsBackToSMTP uses, because that fake never
+// validates the flag list the way a real IMAP server does.
+func TestRestoreOne_RecentFlagStripped_StillAppendsIntoRealDovecot(t *testing.T) {
+	env := newRestoreTestEnv(t)
+	srv := dovecot.Start(t, "recentflagtarget@dovecot.local", "restorepass123")
+	targetAccountID := env.createTargetAccount(t, srv, "recentflagtarget@dovecot.local", "restorepass123")
+
+	raw := []byte("From: sender@example.com\r\nSubject: restore me despite recent\r\nMessage-ID: <recent-flag-restore@example.com>\r\n\r\nBody.\r\n")
+	emailID := env.seedLocalEmail(t, targetAccountID, raw, []string{imap.SeenFlag, imap.RecentFlag})
+
+	restorer := New(Deps{
+		EmailsRepo: env.emailsRepo, AccountsRepo: env.accountsRepo,
+		RestoreLogsRepo: env.restoreLogsRepo, Manager: env.manager,
+	})
+
+	log, err := restorer.RestoreOne(context.Background(), emailID, targetAccountID, "INBOX")
+	if err != nil {
+		t.Fatalf("RestoreOne: %v", err)
+	}
+	if log.Status != domain.RestoreStatusCompleted || log.Method != domain.RestoreMethodIMAPAppend {
+		t.Fatalf("log = %+v, want completed/imap_append (a real server must reject a verbatim \\Recent APPEND, so this only passes if it's stripped first)", log)
+	}
+
+	subject, _ := fetchRestoredMessage(t, srv, "recentflagtarget@dovecot.local", "restorepass123", "recent-flag-restore@example.com")
+	if subject != "restore me despite recent" {
+		t.Errorf("restored Subject = %q, want %q", subject, "restore me despite recent")
+	}
+}
+
 // TestRestoreOne_S3ResidentEmail_LazyLoadsThenAppendsIntoRealDovecot is
 // step 11's demo criterion (S3 half): an email evicted to S3-only
 // (storage_location=s3, no local copy) gets lazy-loaded and decrypted

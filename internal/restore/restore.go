@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/emersion/go-imap"
 	"go.uber.org/zap"
 
 	"github.com/yurydemin/marchi/internal/account"
@@ -141,10 +142,27 @@ func (r *Restorer) tryAppend(ctx context.Context, targetAccount *domain.Account,
 	}
 	defer conn.Logout()
 
-	if err := imapclient.Append(conn, targetFolder, email.Flags, email.Date, content); err != nil {
+	if err := imapclient.Append(conn, targetFolder, appendableFlags(email.Flags), email.Date, content); err != nil {
 		return err
 	}
 	return nil
+}
+
+// appendableFlags strips \Recent from a stored flag set before an APPEND.
+// \Recent is server-assigned (RFC 3501 §2.3.2: "no client can set this
+// flag"); email.Flags reflects the archived message's live FETCH
+// response, and its first-ever fetch after archiving almost always
+// carries \Recent, so a restore that forwards it verbatim gets rejected
+// by any RFC-compliant target server.
+func appendableFlags(flags []string) []string {
+	out := make([]string, 0, len(flags))
+	for _, f := range flags {
+		if f == imap.RecentFlag {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
 }
 
 // record writes the outcome to restore_logs and returns it. attemptErr

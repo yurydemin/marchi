@@ -172,3 +172,22 @@ func TestRestoreOne_BothMethodsFail_RecordsFailed(t *testing.T) {
 		t.Error("ErrorMsg is empty, want a combined error explaining both failures")
 	}
 }
+
+// TestAppendableFlags_StripsRecent covers the bug found live in Phase 3
+// step 18 (Restore UI): a freshly-synced email's stored Flags almost
+// always include \Recent (set by the source server on its first-ever
+// FETCH), and RFC 3501 forbids a client from setting \Recent via APPEND —
+// every real-world restore of a just-archived message was failing before
+// this filter existed, falling back to SMTP or failing outright.
+func TestAppendableFlags_StripsRecent(t *testing.T) {
+	got := appendableFlags([]string{"\\Seen", "\\Recent", "\\Flagged"})
+	want := []string{"\\Seen", "\\Flagged"}
+	if len(got) != len(want) {
+		t.Fatalf("appendableFlags = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("appendableFlags = %v, want %v", got, want)
+		}
+	}
+}
