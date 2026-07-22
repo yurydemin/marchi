@@ -1,0 +1,56 @@
+version: 2
+
+project_name: marchi
+
+# Docker images are built separately via `docker buildx build --platform
+# linux/amd64,linux/arm64 .` (build/docker/release.sh), not through
+# goreleaser's own `dockers:` block — that block copies a curated set of
+# files into a temporary build context, but this project's Dockerfile
+# builds the Go binary from source itself (COPY . .), so driving it
+# through goreleaser would mean re-listing the whole source tree as
+# extra_files just to duplicate what `docker buildx build .` already
+# does correctly on its own.
+builds:
+  - id: marchi
+    main: ./cmd/marchi
+    binary: marchi
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/yurydemin/marchi/internal/version.Version={{.Version}}
+      - -X github.com/yurydemin/marchi/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/yurydemin/marchi/internal/version.BuildDate={{.Date}}
+
+archives:
+  - id: marchi
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - src: build/systemd/*
+        dst: build/systemd
+      - src: build/docker/*
+        dst: build/docker
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^Merge "
+
+release:
+  github:
+    owner: yurydemin
+    name: marchi

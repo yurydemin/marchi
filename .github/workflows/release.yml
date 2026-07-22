@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  goreleaser:
+    name: goreleaser
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Builds the Docker image for both platforms as a build-only check —
+  # this project doesn't publish to a registry yet (see the Phase 4
+  # plan), so there's nothing to push here, just confirmation that a
+  # tagged release's Dockerfile still builds clean on both architectures.
+  docker:
+    name: docker build (amd64 + arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        run: sh build/docker/release.sh "${{ github.ref_name }}"
