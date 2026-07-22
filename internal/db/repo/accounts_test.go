@@ -177,6 +177,44 @@ func TestAccountsRepo_Update_UnknownID(t *testing.T) {
 	}
 }
 
+func TestAccountsRepo_UpdateOAuth2Token(t *testing.T) {
+	repo, _ := openTestRepo(t)
+	ctx := context.Background()
+
+	id, err := repo.Create(ctx, &domain.Account{
+		Email: "oauth2@example.com", IMAPHost: "imap.example.com", IMAPPort: 993,
+		IMAPTLS: domain.IMAPTLSSSL, IMAPUsername: "oauth2@example.com",
+		OAuth2Provider: "google", OAuth2TokenEncrypted: []byte("old-token-cipher"), IsActive: true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := repo.UpdateOAuth2Token(ctx, id, []byte("refreshed-token-cipher")); err != nil {
+		t.Fatalf("UpdateOAuth2Token: %v", err)
+	}
+
+	a, err := repo.GetByID(ctx, id)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if string(a.OAuth2TokenEncrypted) != "refreshed-token-cipher" {
+		t.Errorf("OAuth2TokenEncrypted = %q, want refreshed-token-cipher", a.OAuth2TokenEncrypted)
+	}
+	// Nothing else should have moved.
+	if a.Email != "oauth2@example.com" || a.IMAPHost != "imap.example.com" {
+		t.Errorf("unrelated fields changed: %+v", a)
+	}
+}
+
+func TestAccountsRepo_UpdateOAuth2Token_UnknownID(t *testing.T) {
+	repo, _ := openTestRepo(t)
+	err := repo.UpdateOAuth2Token(context.Background(), 999, []byte("token"))
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("UpdateOAuth2Token on unknown id: err = %v, want sql.ErrNoRows", err)
+	}
+}
+
 func TestAccountsRepo_Delete(t *testing.T) {
 	repo, _ := openTestRepo(t)
 	ctx := context.Background()

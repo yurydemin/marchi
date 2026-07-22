@@ -150,6 +150,40 @@ func TestListFolders(t *testing.T) {
 	}
 }
 
+// TestConnectError_Error_FormatsByStage covers ConnectError.Error()
+// directly: assertStage's own %v-formatted failure messages (its
+// t.Fatalf/t.Errorf calls above) only evaluate when a test fails, so
+// none of the passing Connect_* tests above ever actually call Error()
+// or Unwrap() — hence this dedicated test.
+func TestConnectError_Error_FormatsByStage(t *testing.T) {
+	inner := errors.New("boom")
+	cases := []struct {
+		stage Stage
+		want  string
+	}{
+		{StageDial, "could not reach IMAP server: boom"},
+		{StageTLS, "TLS handshake failed: boom"},
+		{StageLogin, "IMAP login rejected: boom"},
+	}
+	for _, tc := range cases {
+		err := &ConnectError{Stage: tc.stage, Err: inner}
+		if got := err.Error(); got != tc.want {
+			t.Errorf("Stage=%v: Error() = %q, want %q", tc.stage, got, tc.want)
+		}
+	}
+}
+
+func TestConnectError_Unwrap(t *testing.T) {
+	inner := errors.New("boom")
+	err := &ConnectError{Stage: StageDial, Err: inner}
+	if got := errors.Unwrap(err); got != inner {
+		t.Errorf("Unwrap() = %v, want %v", got, inner)
+	}
+	if !errors.Is(err, inner) {
+		t.Error("errors.Is(err, inner) = false, want true (relies on Unwrap)")
+	}
+}
+
 func assertStage(t *testing.T, err error, want Stage) {
 	t.Helper()
 	var connErr *ConnectError

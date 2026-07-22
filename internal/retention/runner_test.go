@@ -137,6 +137,55 @@ func TestRunner_S3NotConfigured_DirectDeletesPastRetentionLocalDays(t *testing.T
 	}
 }
 
+// TestRunner_DirectDelete_LocalFileRemovalFails_RowStillDeleted covers
+// deleteDirectNoBackup's os.Remove failure branch (a warning, not
+// counted as a Stats error — see the doc comment on evictToS3Only/
+// deleteDirectNoBackup: the SQLite row is the source of truth for
+// whether an email was retained, deleted, so a stray on-disk leftover
+// doesn't make the deletion itself "fail"). Points LocalPath at a
+// non-empty directory instead of a file, so os.Remove fails with
+// ENOTEMPTY — a real, non-IsNotExist failure, unlike removing a path
+// that's simply already gone.
+func TestRunner_DirectDelete_LocalFileRemovalFails_RowStillDeleted(t *testing.T) {
+	env := newTestEnv(t)
+	accountID := env.createAccount(t, "user@example.com", intPtr(30))
+
+	fixedNow := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC)
+	oldEnough := fixedNow.AddDate(0, 0, -31)
+
+	emailID, localPath := env.createEmail(t, accountID, 1, oldEnough)
+	// Replace the seeded file with a non-empty directory at the same path.
+	if err := os.Remove(localPath); err != nil {
+		t.Fatalf("removing seeded file: %v", err)
+	}
+	if err := os.MkdirAll(localPath, 0o755); err != nil {
+		t.Fatalf("creating directory at LocalPath: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(localPath, "blocks-removal"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("populating directory: %v", err)
+	}
+
+	runner := New(Deps{
+		AccountsRepo: env.accountsRepo, EmailsRepo: env.emailsRepo,
+		RetentionSettingsRepo: env.retentionSettingsRepo, S3ConfigRepo: env.s3ConfigRepo,
+		Writer: env.w, Now: func() time.Time { return fixedNow },
+	})
+
+	stats, err := runner.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if stats.DeletedDirect != 1 || stats.Errors != 0 {
+		t.Fatalf("stats = %+v, want DeletedDirect=1 Errors=0 (removal failure is a warning, not a Stats error)", stats)
+	}
+	if _, err := env.emailsRepo.GetByID(context.Background(), emailID); err == nil {
+		t.Error("email row still exists, want deleted despite the on-disk removal failure")
+	}
+	if _, err := os.Stat(localPath); err != nil {
+		t.Error("directory at LocalPath was removed unexpectedly, want it left behind (removal failed)")
+	}
+}
+
 func TestRunner_NoPolicySet_NothingHappens(t *testing.T) {
 	env := newTestEnv(t)
 	accountID := env.createAccount(t, "user@example.com", nil) // no override, no global default either

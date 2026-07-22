@@ -257,6 +257,64 @@ func TestEmailsRepo_ListByAccount_OnlyThatAccountAcrossFolders(t *testing.T) {
 	}
 }
 
+// TestEmailsRepo_ListAll_AcrossAccountsOrderedByID covers the full
+// reindex path (FR-SR-04): unlike ListByAccount, ListAll must return
+// every email regardless of which account archived it, in insertion
+// (id) order.
+func TestEmailsRepo_ListAll_AcrossAccountsOrderedByID(t *testing.T) {
+	emails, folders, accounts, w := openTestEmailsRepo(t)
+	ctx := context.Background()
+
+	accountA := mustCreateAccount(t, accounts)
+	accountB, err := accounts.Create(ctx, accountFixture("other-owner@example.com"))
+	if err != nil {
+		t.Fatalf("creating second account fixture: %v", err)
+	}
+	inboxA := mustCreateFolder(t, folders, accountA, "INBOX")
+	inboxB := mustCreateFolder(t, folders, accountB, "INBOX")
+
+	insert := func(accountID, folderID int64, uid uint32) int64 {
+		var id int64
+		err := w.Do(ctx, func(tx *sql.Tx) error {
+			var err error
+			id, err = emails.Insert(ctx, tx, &domain.Email{
+				MessageID: fmt.Sprintf("msg-%d-%d@example.com", accountID, uid),
+				AccountID: accountID, FolderID: folderID, UID: uid,
+				StorageLocation: "local", LocalPath: "/x",
+			})
+			return err
+		})
+		if err != nil {
+			t.Fatalf("inserting account=%d folder=%d uid=%d: %v", accountID, folderID, uid, err)
+		}
+		return id
+	}
+	first := insert(accountA, inboxA.ID, 1)
+	second := insert(accountB, inboxB.ID, 1)
+
+	got, err := emails.ListAll(ctx)
+	if err != nil {
+		t.Fatalf("ListAll: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d emails, want 2 (both accounts included)", len(got))
+	}
+	if got[0].ID != first || got[1].ID != second {
+		t.Errorf("ListAll order = [%d, %d], want [%d, %d] (insertion/id order)", got[0].ID, got[1].ID, first, second)
+	}
+}
+
+func TestEmailsRepo_ListAll_Empty(t *testing.T) {
+	emails, _, _, _ := openTestEmailsRepo(t)
+	got, err := emails.ListAll(context.Background())
+	if err != nil {
+		t.Fatalf("ListAll: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("got %d emails, want 0", len(got))
+	}
+}
+
 func TestEmailsRepo_Stats(t *testing.T) {
 	emails, folders, accounts, w := openTestEmailsRepo(t)
 	ctx := context.Background()

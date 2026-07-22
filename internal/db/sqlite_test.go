@@ -201,3 +201,37 @@ func TestClose_ChecksAndCloses(t *testing.T) {
 		t.Errorf("got %d accounts after reopen, want 1 (Close should have flushed the WAL)", count)
 	}
 }
+
+// TestOpen_UnwritableDirectory_FailsAtPing covers the Ping failure
+// branch: pointing at a path whose parent directory doesn't exist means
+// SQLite can't create the file, which sql.Open (lazy, no I/O yet) won't
+// catch — only the explicit Ping does.
+func TestOpen_UnwritableDirectory_FailsAtPing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "does-not-exist", "nested", "marchi.db")
+	_, err := Open(path)
+	if err == nil {
+		t.Fatal("Open with a nonexistent parent directory: got nil error, want a failure")
+	}
+}
+
+// TestClose_ChecksumFails_StillClosesAndReturnsError covers Close's
+// "checkpoint failed but close succeeded" branch: sqlDB is already
+// closed by the time Close(sqlDB) runs its own PRAGMA, so the checkpoint
+// fails, but sql.DB.Close() itself is idempotent (a second call just
+// returns nil) — the exact combination the "both failed" branch doesn't
+// cover, so this is the other real-world-reachable half of Close's error
+// handling.
+func TestClose_ChecksumFails_StillClosesAndReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "marchi.db")
+	sqlDB, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatalf("pre-closing sqlDB: %v", err)
+	}
+
+	if err := Close(sqlDB); err == nil {
+		t.Error("Close on an already-closed *sql.DB: got nil error, want the checkpoint failure surfaced")
+	}
+}

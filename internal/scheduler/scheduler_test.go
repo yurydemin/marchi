@@ -17,6 +17,7 @@ import (
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
 	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/retention"
 	"github.com/yurydemin/marchi/internal/search"
 	"github.com/yurydemin/marchi/internal/security/crypto"
 )
@@ -347,5 +348,119 @@ func TestScheduler_TriggerSync_RunsThroughTheSameWorkerPool(t *testing.T) {
 	logs, err := env.deps.SyncLogsRepo.ListByAccount(context.Background(), a.ID, 1)
 	if err != nil || len(logs) != 1 {
 		t.Fatalf("expected TriggerSync to have run and recorded a sync_logs row, got %v, %v", logs, err)
+	}
+}
+
+// TestScheduler_Start_WithRetentionRunner_RegistersCronWithoutCrashing
+// covers Start's retention-cron registration branch (untested by
+// TestScheduler_StartStop_NoAccounts_DoesNotHang, which never sets
+// Deps.RetentionRunner) — both a valid RetentionCron and, separately, an
+// invalid one that must log and continue rather than panic or block
+// Start from returning.
+func TestScheduler_Start_WithRetentionRunner_RegistersCronWithoutCrashing(t *testing.T) {
+	for _, cronExpr := range []string{"", "*/5 * * * *", "not a valid cron expression"} {
+		t.Run(cronExpr, func(t *testing.T) {
+			env := newTestEnv(t)
+			env.deps.RetentionRunner = retention.New(retention.Deps{
+				AccountsRepo: env.deps.AccountsRepo, EmailsRepo: env.deps.EmailsRepo,
+				RetentionSettingsRepo: repo.NewRetentionSettingsRepo(env.sqlDB, env.deps.Writer),
+				S3ConfigRepo:          repo.NewS3ConfigRepo(env.sqlDB, env.deps.Writer),
+				Writer:                env.deps.Writer,
+			})
+			env.deps.RetentionCron = cronExpr
+			s := newTestScheduler(t, env)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			s.Start(ctx)
+			cancel()
+
+			done := make(chan struct{})
+			go func() {
+				s.Stop()
+				close(done)
+			}()
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("Stop() did not return within 5s")
+			}
+		})
+	}
+}
+
+// TestScheduler_RunSync_SubmitsToPool covers runSync — the private
+// method a scheduled cron tick actually calls (refresh's AddFunc wires
+// it, never TriggerSync). Same shape as TriggerSync's own test, minus
+// the returned job id TriggerSync alone hands back to callers.
+func TestScheduler_RunSync_SubmitsToPool(t *testing.T) {
+	env := newTestEnv(t)
+	a, err := env.deps.Manager.AddAccount(context.Background(), account.AddAccountParams{
+		Email: "a@example.com", IMAPHost: "127.0.0.1", IMAPPort: 1,
+		IMAPTLS: domain.IMAPTLSNone, IMAPPassword: "hunter2hunter2",
+	})
+	if err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	s := newTestScheduler(t, env)
+
+	s.runSync(a.ID)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		logs, err := env.deps.SyncLogsRepo.ListByAccount(context.Background(), a.ID, 1)
+		if err == nil && len(logs) == 1 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	logs, err := env.deps.SyncLogsRepo.ListByAccount(context.Background(), a.ID, 1)
+	if err != nil || len(logs) != 1 {
+		t.Fatalf("expected runSync to have run and recorded a sync_logs row, got %v, %v", logs, err)
+	}
+}
+
+// TestScheduler_TriggerRetention_NilRunner_ReturnsError covers
+// TriggerRetention's "retention isn't configured" guard — the same
+// nil-means-off convention as RulesRepo/S3ConfigRepo, exercised here by
+// simply never setting Deps.RetentionRunner.
+func TestScheduler_TriggerRetention_NilRunner_ReturnsError(t *testing.T) {
+	env := newTestEnv(t)
+	s := newTestScheduler(t, env)
+
+	if err := s.TriggerRetention(); err == nil {
+		t.Fatal("TriggerRetention with a nil RetentionRunner: got nil error, want one")
+	}
+}
+
+// TestScheduler_TriggerRetention_RunsThroughPool covers TriggerRetention
+// and runRetention's success path end to end: a real retention.Runner
+// against an empty archive (nothing due, Stats all zero) still proves
+// the plumbing — the retention package's own tests cover what actually
+// happens to an email at each stage.
+func TestScheduler_TriggerRetention_RunsThroughPool(t *testing.T) {
+	env := newTestEnv(t)
+	retentionSettingsRepo := repo.NewRetentionSettingsRepo(env.sqlDB, env.deps.Writer)
+	s3ConfigRepo := repo.NewS3ConfigRepo(env.sqlDB, env.deps.Writer)
+
+	var ranAt time.Time
+	env.deps.RetentionRunner = retention.New(retention.Deps{
+		AccountsRepo: env.deps.AccountsRepo, EmailsRepo: env.deps.EmailsRepo,
+		RetentionSettingsRepo: retentionSettingsRepo, S3ConfigRepo: s3ConfigRepo,
+		Writer: env.deps.Writer,
+		Now:    func() time.Time { ranAt = time.Now(); return ranAt },
+	})
+	s := newTestScheduler(t, env)
+
+	if err := s.TriggerRetention(); err != nil {
+		t.Fatalf("TriggerRetention: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for ranAt.IsZero() && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if ranAt.IsZero() {
+		t.Fatal("TriggerRetention did not actually run the retention pass within 5s")
 	}
 }

@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -90,6 +91,43 @@ func TestAttachmentsRepo_InsertAndListByEmail(t *testing.T) {
 	}
 	if list[1].Filename != "logo.png" || list[1].ContentID != "logo123" {
 		t.Errorf("list[1] = %+v", list[1])
+	}
+}
+
+func TestAttachmentsRepo_GetByID(t *testing.T) {
+	env := openAttachmentsTestEnv(t)
+	ctx := context.Background()
+
+	accountID := mustCreateAccount(t, env.accounts)
+	folder := mustCreateFolder(t, env.folders, accountID, "INBOX")
+	emailID := env.createEmail(t, accountID, folder.ID, 1)
+
+	var attID int64
+	err := env.w.Do(ctx, func(tx *sql.Tx) error {
+		var err error
+		attID, err = env.attachments.Insert(ctx, tx, &domain.Attachment{
+			EmailID: emailID, Filename: "report.pdf", MIMEType: "application/pdf", Size: 12345,
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("inserting attachment: %v", err)
+	}
+
+	a, err := env.attachments.GetByID(ctx, attID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if a.Filename != "report.pdf" || a.MIMEType != "application/pdf" || a.Size != 12345 || a.EmailID != emailID {
+		t.Errorf("GetByID = %+v", a)
+	}
+}
+
+func TestAttachmentsRepo_GetByID_UnknownID(t *testing.T) {
+	env := openAttachmentsTestEnv(t)
+	_, err := env.attachments.GetByID(context.Background(), 999)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("GetByID on unknown id: err = %v, want sql.ErrNoRows", err)
 	}
 }
 
