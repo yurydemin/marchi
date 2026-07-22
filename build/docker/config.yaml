@@ -1,0 +1,17 @@
+# Baked into the Docker image at /etc/marchi/config.yaml. The only
+# override from internal/config.Defaults that actually matters in a
+# container: http.host must be 0.0.0.0, not the default 127.0.0.1 — a
+# listener bound to loopback inside the container is unreachable through
+# Docker's port mapping from outside it. Everything else (SQLite path,
+# search index, Maildir, TLS certs, logs) stays under app.data_dir, which
+# docker-compose.yml maps to a named volume via MARCHI_DATA_DIR instead
+# of editing this file per deployment.
+app:
+  data_dir: /data
+
+http:
+  host: 0.0.0.0
+  port: 8080
+  tls:
+    enabled: true
+    auto_cert: true
