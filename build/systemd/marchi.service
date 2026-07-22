@@ -1,0 +1,37 @@
+[Unit]
+Description=Marchi self-hosted email archiver
+Documentation=https://github.com/yurydemin/marchi
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=marchi
+Group=marchi
+WorkingDirectory=/var/lib/marchi
+ExecStart=/usr/local/bin/marchi --config /etc/marchi/config.yaml
+
+# Optional: supplies MARCHI_MASTER_KEY for unattended startup (NFR-SC-01).
+# Without it the service starts locked and stays locked until someone
+# opens the web UI and unlocks it by hand — the leading "-" makes a
+# missing file not an error, so that's a supported, deliberate choice,
+# not something this unit needs to fail on.
+EnvironmentFile=-/etc/marchi/marchi.env
+
+# Marchi's own SIGTERM handling (drains in-flight writer transactions,
+# checkpoints the WAL, 30s watchdog) already does exactly what a plain
+# `systemctl stop` sends by default — no extra shutdown coordination
+# needed here.
+Restart=on-failure
+RestartSec=5
+
+# Hardening: the process only ever needs to read its config/env and
+# read-write its own data directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/marchi
+
+[Install]
+WantedBy=multi-user.target

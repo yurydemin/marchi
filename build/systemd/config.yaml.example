@@ -1,0 +1,12 @@
+# Copy to /etc/marchi/config.yaml. Everything else (SQLite path, search
+# index, Maildir, TLS certs, logs) lives under app.data_dir by default —
+# see internal/config.Defaults for the full zero-config baseline.
+app:
+  data_dir: /var/lib/marchi
+
+http:
+  host: 127.0.0.1 # change to 0.0.0.0 (or a reverse-proxy setup) to expose beyond localhost
+  port: 8080
+  tls:
+    enabled: true
+    auto_cert: true # self-signed, regenerated under app.data_dir/tls on first start
