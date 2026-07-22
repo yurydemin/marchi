@@ -114,6 +114,30 @@ func (r *SyncLogsRepo) CountAll(ctx context.Context) (int, error) {
 	return n, nil
 }
 
+// CountByStatus returns how many sync_logs rows exist per status —
+// Prometheus's sync-runs counter (Phase 4 step 2) reads this at scrape
+// time instead of needing a hook at every place a sync run finishes:
+// sync_logs rows are never deleted, so a status's row count only grows,
+// same monotonic behavior a real counter would have.
+func (r *SyncLogsRepo) CountByStatus(ctx context.Context) (map[string]int, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM sync_logs GROUP BY status`)
+	if err != nil {
+		return nil, fmt.Errorf("repo: counting sync_logs by status: %w", err)
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int)
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, fmt.Errorf("repo: scanning sync_logs status count: %w", err)
+		}
+		counts[status] = count
+	}
+	return counts, rows.Err()
+}
+
 func scanSyncLogs(rows *sql.Rows) ([]*domain.SyncLog, error) {
 	var logs []*domain.SyncLog
 	for rows.Next() {

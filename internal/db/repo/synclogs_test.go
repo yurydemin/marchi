@@ -221,6 +221,44 @@ func TestSyncLogsRepo_CountAll(t *testing.T) {
 	}
 }
 
+func TestSyncLogsRepo_CountByStatus(t *testing.T) {
+	logs, accounts := openTestSyncLogsRepo(t)
+	ctx := context.Background()
+	accountID := mustCreateAccount(t, accounts)
+
+	if counts, err := logs.CountByStatus(ctx); err != nil || len(counts) != 0 {
+		t.Fatalf("CountByStatus before any runs = %v, %v, want empty, nil", counts, err)
+	}
+
+	for i := 0; i < 2; i++ {
+		id, err := logs.Start(ctx, accountID)
+		if err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+		if err := logs.Finish(ctx, id, &domain.SyncLog{Status: domain.SyncLogCompleted}); err != nil {
+			t.Fatalf("Finish: %v", err)
+		}
+	}
+	id, err := logs.Start(ctx, accountID)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := logs.Finish(ctx, id, &domain.SyncLog{Status: domain.SyncLogFailed, ErrorMsg: "boom"}); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+
+	counts, err := logs.CountByStatus(ctx)
+	if err != nil {
+		t.Fatalf("CountByStatus: %v", err)
+	}
+	if counts[string(domain.SyncLogCompleted)] != 2 {
+		t.Errorf("counts[completed] = %d, want 2", counts[string(domain.SyncLogCompleted)])
+	}
+	if counts[string(domain.SyncLogFailed)] != 1 {
+		t.Errorf("counts[failed] = %d, want 1", counts[string(domain.SyncLogFailed)])
+	}
+}
+
 func TestSyncLogsRepo_ListRecentPage_OffsetAndLimit(t *testing.T) {
 	logs, accounts := openTestSyncLogsRepo(t)
 	ctx := context.Background()

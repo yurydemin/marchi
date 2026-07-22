@@ -66,6 +66,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	}
 
 	app.Use(recover.New())
+	app.Use(httpMetricsMiddleware)
 	app.Use(func(c *fiber.Ctx) error {
 		c.Set(fiber.HeaderContentSecurityPolicy, contentSecurityPolicy)
 		return c.Next()
@@ -100,6 +101,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	registerLogs(app, vault)
 	registerAdmin(app, vault)
 	registerWS(app, hub)
+	registerMetrics(app, vault)
 	registerPages(app, vault, store, pages)
 	registerAccountsPage(app, vault, store, pages)
 	registerArchivePage(app, vault, store, pages)

@@ -70,6 +70,29 @@ func (r *RestoreLogsRepo) ListRecent(ctx context.Context, limit int) ([]*domain.
 	return scanRestoreLogs(rows)
 }
 
+// CountByStatus returns how many restore_logs rows exist per status —
+// Prometheus's restore-attempts counter (Phase 4 step 2) reads this at
+// scrape time; restore_logs rows are never deleted, so a status's row
+// count only grows, same monotonic behavior a real counter would have.
+func (r *RestoreLogsRepo) CountByStatus(ctx context.Context) (map[string]int, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM restore_logs GROUP BY status`)
+	if err != nil {
+		return nil, fmt.Errorf("repo: counting restore_logs by status: %w", err)
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int)
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, fmt.Errorf("repo: scanning restore_logs status count: %w", err)
+		}
+		counts[status] = count
+	}
+	return counts, rows.Err()
+}
+
 func scanRestoreLogs(rows *sql.Rows) ([]*domain.RestoreLog, error) {
 	var logs []*domain.RestoreLog
 	for rows.Next() {

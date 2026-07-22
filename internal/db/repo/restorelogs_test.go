@@ -120,6 +120,43 @@ func TestRestoreLogsRepo_ListRecent_AcrossEmails(t *testing.T) {
 	}
 }
 
+func TestRestoreLogsRepo_CountByStatus(t *testing.T) {
+	logs, emails, folders, accounts, w := openTestRestoreLogsRepo(t)
+	ctx := context.Background()
+
+	accountID := mustCreateAccount(t, accounts)
+	folder := mustCreateFolder(t, folders, accountID, "INBOX")
+	emailID := insertEmail(t, emails, w, accountID, folder.ID, 1)
+
+	if counts, err := logs.CountByStatus(ctx); err != nil || len(counts) != 0 {
+		t.Fatalf("CountByStatus before any attempts = %v, %v, want empty, nil", counts, err)
+	}
+
+	if _, err := logs.Create(ctx, &domain.RestoreLog{
+		EmailID: emailID, TargetAccountID: accountID, TargetFolder: "INBOX",
+		Method: domain.RestoreMethodIMAPAppend, Status: domain.RestoreStatusCompleted,
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := logs.Create(ctx, &domain.RestoreLog{
+		EmailID: emailID, TargetAccountID: accountID, TargetFolder: "INBOX",
+		Method: domain.RestoreMethodSMTP, Status: domain.RestoreStatusFailed, ErrorMsg: "boom",
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	counts, err := logs.CountByStatus(ctx)
+	if err != nil {
+		t.Fatalf("CountByStatus: %v", err)
+	}
+	if counts[domain.RestoreStatusCompleted] != 1 {
+		t.Errorf("counts[completed] = %d, want 1", counts[domain.RestoreStatusCompleted])
+	}
+	if counts[domain.RestoreStatusFailed] != 1 {
+		t.Errorf("counts[failed] = %d, want 1", counts[domain.RestoreStatusFailed])
+	}
+}
+
 func TestRestoreLogsRepo_ListRecent_RespectsLimit(t *testing.T) {
 	logs, emails, folders, accounts, w := openTestRestoreLogsRepo(t)
 	ctx := context.Background()
