@@ -60,7 +60,7 @@ func handleAccountsPage(vault *vaultState, store *session.Store, pages map[strin
 		if err != nil {
 			return err
 		}
-		return pages["accounts"].ExecuteTemplate(c, "layout", accountsPageData{Unlocked: true, Accounts: resp})
+		return render(c, pages, "accounts", "layout", accountsPageData{Unlocked: true, Accounts: resp})
 	}
 }
 
@@ -90,7 +90,7 @@ func renderAccountRows(c *fiber.Ctx, b *backend, pages map[string]*template.Temp
 		return err
 	}
 	c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
-	return pages["accounts"].ExecuteTemplate(c, "account-rows", resp)
+	return render(c, pages, "accounts", "account-rows", resp)
 }
 
 // handleAccountsCreate mirrors handleCreateAccount (accounts.go) but
@@ -119,7 +119,7 @@ func handleAccountsCreate(vault *vaultState, store *session.Store, pages map[str
 		}
 		var req createAccountRequest
 		if err := c.BodyParser(&req); err != nil {
-			return fragmentError(c, pages, fiber.StatusBadRequest, "invalid form submission")
+			return fragmentError(c, pages, fiber.StatusBadRequest, localizer(c).T("common.invalid_form"))
 		}
 		tlsMode, err := domain.ParseIMAPTLSMode(req.IMAPTLS)
 		if err != nil {
@@ -131,7 +131,7 @@ func handleAccountsCreate(vault *vaultState, store *session.Store, pages map[str
 			IMAPPassword: req.IMAPPassword,
 		}); err != nil {
 			if errors.Is(err, repo.ErrDuplicateEmail) {
-				return fragmentError(c, pages, fiber.StatusConflict, "an account with this email already exists")
+				return fragmentError(c, pages, fiber.StatusConflict, localizer(c).T("accounts.email_exists"))
 			}
 			return fragmentError(c, pages, fiber.StatusBadRequest, err.Error())
 		}
@@ -158,7 +158,7 @@ func handleAccountRowView(vault *vaultState, store *session.Store, pages map[str
 			return fiber.NewError(fiber.StatusInternalServerError, "loading account failed")
 		}
 		c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
-		return pages["accounts"].ExecuteTemplate(c, "account-row", accountResponseFrom(a))
+		return render(c, pages, "accounts", "account-row", accountResponseFrom(a))
 	}
 }
 
@@ -180,7 +180,7 @@ func handleAccountRowEdit(vault *vaultState, store *session.Store, pages map[str
 			return fiber.NewError(fiber.StatusInternalServerError, "loading account failed")
 		}
 		c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
-		return pages["accounts"].ExecuteTemplate(c, "account-edit-row", accountResponseFrom(a))
+		return render(c, pages, "accounts", "account-edit-row", accountResponseFrom(a))
 	}
 }
 
@@ -201,7 +201,7 @@ func handleAccountsUpdate(vault *vaultState, store *session.Store, pages map[str
 		}
 		var req updateAccountRequest
 		if err := c.BodyParser(&req); err != nil {
-			return fragmentError(c, pages, fiber.StatusBadRequest, "invalid form submission")
+			return fragmentError(c, pages, fiber.StatusBadRequest, localizer(c).T("common.invalid_form"))
 		}
 		tlsMode, err := domain.ParseIMAPTLSMode(req.IMAPTLS)
 		if err != nil {
@@ -339,7 +339,7 @@ func handleAccountsTest(vault *vaultState, store *session.Store, pages map[strin
 		}
 
 		c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
-		return pages["accounts"].ExecuteTemplate(c, "test-result", result)
+		return render(c, pages, "accounts", "test-result", result)
 	}
 }
 

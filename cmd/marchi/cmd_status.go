@@ -10,14 +10,15 @@ import (
 	"github.com/yurydemin/marchi/internal/db"
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/i18n"
 )
 
-func newStatusCmd() *cobra.Command {
+func newStatusCmd(loc *i18n.Localizer) *cobra.Command {
 	var limit int
 
 	cmd := &cobra.Command{
 		Use:   "status [email]",
-		Short: "Show recent sync run history (sync_logs) — for one account, or across all of them",
+		Short: loc.T("cli.status.short"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := configFrom(cmd.Context())

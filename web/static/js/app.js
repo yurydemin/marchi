@@ -37,7 +37,9 @@ function applyTheme(theme) {
   document.documentElement.classList.toggle("dark", theme === "dark");
   const btn = document.getElementById("theme-toggle");
   if (btn) {
-    btn.textContent = theme === "dark" ? "Light" : "Dark";
+    // Labels come from the button's own data attributes (set by
+    // layout.html via {{T}}) so this file never hardcodes English text.
+    btn.textContent = theme === "dark" ? btn.dataset.labelLight : btn.dataset.labelDark;
   }
 }
 
@@ -67,7 +69,7 @@ document.addEventListener("htmx:afterRequest", function (evt) {
   }
   const errorEl = document.getElementById("unlock-error");
   if (errorEl) {
-    errorEl.textContent = evt.detail.xhr.responseText || "Unlock failed.";
+    errorEl.textContent = evt.detail.xhr.responseText || errorEl.dataset.labelFailed;
   }
 });
 
@@ -366,7 +368,7 @@ document.addEventListener("click", function (evt) {
   const statusEl = document.getElementById("reindex-status");
   btn.disabled = true;
   if (statusEl) {
-    statusEl.textContent = "Starting…";
+    statusEl.textContent = statusEl.dataset.labelStarting;
   }
   connectJobProgressSocket()
     .then(function () {
@@ -391,7 +393,7 @@ document.addEventListener("click", function (evt) {
     .catch(function () {
       btn.disabled = false;
       if (statusEl) {
-        statusEl.textContent = "Failed to start reindex.";
+        statusEl.textContent = statusEl.dataset.labelFailed;
       }
     });
 });
@@ -459,7 +461,7 @@ document.addEventListener("click", function (evt) {
   const statusEl = document.getElementById("restore-status");
   btn.disabled = true;
   if (statusEl) {
-    statusEl.textContent = "Starting…";
+    statusEl.textContent = statusEl.dataset.labelStarting;
   }
   connectJobProgressSocket()
     .then(function () {
@@ -488,7 +490,7 @@ document.addEventListener("click", function (evt) {
     })
     .catch(function () {
       if (statusEl) {
-        statusEl.textContent = "Failed to start restore.";
+        statusEl.textContent = statusEl.dataset.labelFailed;
       }
       updateRestoreButtonState();
     });

@@ -4,12 +4,14 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/yurydemin/marchi/internal/i18n"
 )
 
-func newUnlockCmd() *cobra.Command {
+func newUnlockCmd(loc *i18n.Localizer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "unlock",
-		Short: "Unlock the Master Key (or set one, on first run)",
+		Short: loc.T("cli.unlock.short"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := configFrom(cmd.Context())
 			logger := loggerFrom(cmd.Context())

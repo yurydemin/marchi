@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/yurydemin/marchi/internal/config"
 	"github.com/yurydemin/marchi/internal/httpapi"
+	"github.com/yurydemin/marchi/internal/i18n"
 	"github.com/yurydemin/marchi/internal/logging"
 	"github.com/yurydemin/marchi/internal/maildir"
 	"github.com/yurydemin/marchi/internal/version"
@@ -30,7 +32,7 @@ func main() {
 
 	go forceExitOnTimeout(ctx, gracefulShutdownTimeout)
 
-	err := newRootCmd().ExecuteContext(ctx)
+	err := newRootCmd(i18n.NewLocalizer(resolveCLILang(os.Args[1:]))).ExecuteContext(ctx)
 	if err == nil {
 		return
 	}
@@ -56,12 +58,47 @@ func forceExitOnTimeout(ctx context.Context, timeout time.Duration) {
 	os.Exit(1)
 }
 
-func newRootCmd() *cobra.Command {
+// resolveCLILang picks the language cobra's Short/Use help text is built
+// in — resolved once, before newRootCmd constructs the command tree,
+// because those strings are baked in at construction time (see
+// newRootCmd's own doc comment). Checked in the same precedence order as
+// most CLI tools: an explicit --lang flag first, then LC_ALL/LANG
+// (POSIX's own precedence between the two), then i18n.Default. This is a
+// hand-rolled scan rather than a cobra flag lookup specifically because
+// it has to run before any cobra.Command exists at all.
+func resolveCLILang(args []string) string {
+	for i, a := range args {
+		if v, ok := strings.CutPrefix(a, "--lang="); ok {
+			return v
+		}
+		if a == "--lang" && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	for _, envVar := range []string{"LC_ALL", "LANG"} {
+		v := os.Getenv(envVar)
+		if v == "" {
+			continue
+		}
+		if idx := strings.IndexAny(v, "_."); idx >= 0 {
+			v = v[:idx]
+		}
+		return v
+	}
+	return i18n.Default
+}
+
+// newRootCmd builds the full command tree. loc is resolved once by
+// main() (see resolveCLILang) and threaded into every subcommand
+// constructor because cobra bakes each Command's Short/Use text in at
+// construction time — unlike a flag's value, there's no later point
+// where "just read loc again" would pick up a different language.
+func newRootCmd(loc *i18n.Localizer) *cobra.Command {
 	var closeLogging func() error
 
 	root := &cobra.Command{
 		Use:          "marchi",
-		Short:        "Marchi — self-hosted email archiving service",
+		Short:        loc.T("cli.root.short"),
 		SilenceUsage: true,
 		// main() already prints every error itself (both the "clean
 		// shutdown" and generic cases below) — leaving Cobra's own default
@@ -119,18 +156,19 @@ func newRootCmd() *cobra.Command {
 	}
 	root.SetVersionTemplate("marchi {{.Version}}\n")
 	root.PersistentFlags().String("config", "./config.yaml", "path to config.yaml (missing file is not an error)")
+	root.PersistentFlags().String("lang", "", loc.T("cli.lang_flag_help"))
 
-	root.AddCommand(newConfigCmd())
-	root.AddCommand(newUnlockCmd())
-	root.AddCommand(newMigrateCmd())
-	root.AddCommand(newAddAccountCmd())
-	root.AddCommand(newListAccountsCmd())
-	root.AddCommand(newTestConnectionCmd())
-	root.AddCommand(newSyncCmd())
-	root.AddCommand(newStatusCmd())
-	root.AddCommand(newLogsCmd())
-	root.AddCommand(newReindexCmd())
-	root.AddCommand(newRetentionCmd())
+	root.AddCommand(newConfigCmd(loc))
+	root.AddCommand(newUnlockCmd(loc))
+	root.AddCommand(newMigrateCmd(loc))
+	root.AddCommand(newAddAccountCmd(loc))
+	root.AddCommand(newListAccountsCmd(loc))
+	root.AddCommand(newTestConnectionCmd(loc))
+	root.AddCommand(newSyncCmd(loc))
+	root.AddCommand(newStatusCmd(loc))
+	root.AddCommand(newLogsCmd(loc))
+	root.AddCommand(newReindexCmd(loc))
+	root.AddCommand(newRetentionCmd(loc))
 
 	return root
 }

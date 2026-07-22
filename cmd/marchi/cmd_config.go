@@ -5,21 +5,23 @@ import (
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+
+	"github.com/yurydemin/marchi/internal/i18n"
 )
 
-func newConfigCmd() *cobra.Command {
+func newConfigCmd(loc *i18n.Localizer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Inspect the resolved configuration",
+		Short: loc.T("cli.config.short"),
 	}
-	cmd.AddCommand(newConfigShowCmd())
+	cmd.AddCommand(newConfigShowCmd(loc))
 	return cmd
 }
 
-func newConfigShowCmd() *cobra.Command {
+func newConfigShowCmd(loc *i18n.Localizer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show",
-		Short: "Print the fully resolved configuration (defaults + config.yaml + env overrides)",
+		Short: loc.T("cli.config_show.short"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := configFrom(cmd.Context())
 			out, err := yaml.Marshal(cfg)

@@ -1,24 +1,53 @@
 package webui
 
 import (
+	"errors"
 	"fmt"
 	"html/template"
 	"strings"
 	"time"
 
 	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/i18n"
 )
 
-// funcs are available to every parsed page template.
+// funcs are available to every parsed page template. "T" and
+// "conditionTypeLabel" are locale-dependent — these entries are only
+// placeholders so Parse() can validate call sites (name and arg count)
+// at parse time; Bind rebinds both to the request's actual *i18n.Localizer
+// on a per-request Clone before Execute (see webui.go's doc comment on
+// Bind for why Clone, not a fresh Parse, is enough for that).
 var funcs = template.FuncMap{
 	"humanBytes":          humanBytes,
 	"formatTime":          formatTime,
 	"formatDate":          formatDate,
 	"add":                 func(a, b int) int { return a + b },
+	"dict":                dict,
 	"conditionTypes":      conditionTypes,
-	"conditionTypeLabel":  conditionTypeLabel,
+	"conditionTypeLabel":  func(domain.ConditionType) string { return "" },
 	"summarizeConditions": summarizeConditions,
 	"ruleNodeView":        newRuleNodeView,
+	"T":                   func(string, ...i18n.TplData) string { return "" },
+	"langs":               func() []string { return i18n.Supported },
+}
+
+// dict builds a map from an alternating key/value argument list, letting
+// templates pass multiple named placeholders into T for interpolated
+// messages (e.g. {{T "dashboard.s3_queue_detail" (dict "Uploading" .X
+// "Failed" .Y)}}) — html/template has no map literal syntax of its own.
+func dict(pairs ...any) (i18n.TplData, error) {
+	if len(pairs)%2 != 0 {
+		return nil, errors.New("dict: odd number of arguments")
+	}
+	d := make(i18n.TplData, len(pairs)/2)
+	for i := 0; i < len(pairs); i += 2 {
+		key, ok := pairs[i].(string)
+		if !ok {
+			return nil, fmt.Errorf("dict: key %d must be a string, got %T", i, pairs[i])
+		}
+		d[key] = pairs[i+1]
+	}
+	return d, nil
 }
 
 // RuleNodeView pairs a RuleNode with its depth in the tree (1 = root) —
@@ -90,39 +119,40 @@ func conditionTypes() []domain.ConditionType {
 // conditionTypeLabel is conditionTypes' human-readable label, including a
 // hint about the expected Value format — internal/rules.validateLeafValue
 // is the source of truth for what's actually accepted; this is purely
-// descriptive.
-func conditionTypeLabel(t domain.ConditionType) string {
+// descriptive. Locale-dependent (see Bind), unlike the rest of this
+// file's funcs.
+func conditionTypeLabel(loc *i18n.Localizer, t domain.ConditionType) string {
 	switch t {
 	case domain.ConditionFromContains:
-		return "From header matches (regex)"
+		return loc.T("rules.condition.from_contains")
 	case domain.ConditionFromDomain:
-		return "From domain is"
+		return loc.T("rules.condition.from_domain")
 	case domain.ConditionFromExact:
-		return "From address is exactly"
+		return loc.T("rules.condition.from_exact")
 	case domain.ConditionToContains:
-		return "To header matches (regex)"
+		return loc.T("rules.condition.to_contains")
 	case domain.ConditionToDomain:
-		return "To domain is"
+		return loc.T("rules.condition.to_domain")
 	case domain.ConditionSubjectContains:
-		return "Subject matches (regex)"
+		return loc.T("rules.condition.subject_contains")
 	case domain.ConditionHasAttachments:
-		return "Has attachments (true/false)"
+		return loc.T("rules.condition.has_attachments")
 	case domain.ConditionAttachmentType:
-		return "Has attachment of type (MIME type)"
+		return loc.T("rules.condition.attachment_type")
 	case domain.ConditionSizeGreaterThan:
-		return "Size greater than (bytes)"
+		return loc.T("rules.condition.size_greater_than")
 	case domain.ConditionSizeLessThan:
-		return "Size less than (bytes)"
+		return loc.T("rules.condition.size_less_than")
 	case domain.ConditionDateAfter:
-		return "Date after (e.g. 2026-01-15T00:00:00Z)"
+		return loc.T("rules.condition.date_after")
 	case domain.ConditionDateBefore:
-		return "Date before (e.g. 2026-01-15T00:00:00Z)"
+		return loc.T("rules.condition.date_before")
 	case domain.ConditionFolderIs:
-		return "Folder is"
+		return loc.T("rules.condition.folder_is")
 	case domain.ConditionFolderIsNot:
-		return "Folder is not"
+		return loc.T("rules.condition.folder_is_not")
 	case domain.ConditionAccountIs:
-		return "Account ID is"
+		return loc.T("rules.condition.account_is")
 	default:
 		return string(t)
 	}

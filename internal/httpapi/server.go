@@ -81,12 +81,14 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 		CookieSameSite: "Lax",
 	}))
 	app.Use(newLockGate(store))
+	app.Use(localeMiddleware)
 
 	app.Use("/static", filesystem.New(filesystem.Config{
 		Root:   http.FS(webui.StaticFS()),
 		MaxAge: 3600,
 	}))
 
+	registerLangSwitch(app)
 	registerUnlock(app, cfg, logger, vault, store)
 	registerSearch(app, vault)
 	registerAccounts(app, vault)

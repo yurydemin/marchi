@@ -62,7 +62,7 @@ func handleSettingsPage(vault *vaultState, store *session.Store, pages map[strin
 			return err
 		}
 		data.Unlocked = true
-		return pages["settings"].ExecuteTemplate(c, "layout", data)
+		return render(c, pages, "settings", "layout", data)
 	}
 }
 
@@ -146,7 +146,7 @@ func settingsError(msg string) settingsResult { return settingsResult{OK: false,
 
 func renderSettingsResult(c *fiber.Ctx, pages map[string]*template.Template, name string, res settingsResult) error {
 	c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
-	return pages["settings"].ExecuteTemplate(c, name, res)
+	return render(c, pages, "settings", name, res)
 }
 
 func handleSettingsChangeMasterKey(cfg *config.Config, vault *vaultState, store *session.Store, pages map[string]*template.Template) fiber.Handler {
@@ -154,12 +154,13 @@ func handleSettingsChangeMasterKey(cfg *config.Config, vault *vaultState, store 
 		if _, err := requireUnlockedSession(c, vault, store); err != nil {
 			return err
 		}
+		loc := localizer(c)
 		var req changeMasterKeyRequest
 		if err := c.BodyParser(&req); err != nil {
-			return renderSettingsResult(c, pages, "master-key-result", settingsError("invalid form submission"))
+			return renderSettingsResult(c, pages, "master-key-result", settingsError(loc.T("common.invalid_form")))
 		}
 		if req.NewPassword != req.ConfirmPassword {
-			return renderSettingsResult(c, pages, "master-key-result", settingsError("new password and confirmation do not match"))
+			return renderSettingsResult(c, pages, "master-key-result", settingsError(loc.T("settings.result.password_mismatch")))
 		}
 
 		params := masterkey.Argon2Params{
@@ -170,9 +171,9 @@ func handleSettingsChangeMasterKey(cfg *config.Config, vault *vaultState, store 
 		err := masterkey.ChangePassword(req.CurrentPassword, req.NewPassword, cfg.App.DataDir, params)
 		switch {
 		case err == nil:
-			return renderSettingsResult(c, pages, "master-key-result", settingsOK("Master Key changed. Use the new password next time you unlock."))
+			return renderSettingsResult(c, pages, "master-key-result", settingsOK(loc.T("settings.result.master_key_changed")))
 		case errors.Is(err, masterkey.ErrIncorrectPassword):
-			return renderSettingsResult(c, pages, "master-key-result", settingsError("current password is incorrect"))
+			return renderSettingsResult(c, pages, "master-key-result", settingsError(loc.T("settings.result.current_password_incorrect")))
 		case errors.Is(err, masterkey.ErrPasswordTooShort):
 			return renderSettingsResult(c, pages, "master-key-result", settingsError(err.Error()))
 		default:
@@ -201,7 +202,7 @@ func handleSettingsSaveS3(vault *vaultState, store *session.Store, pages map[str
 		}
 		var req settingsS3FormRequest
 		if err := c.BodyParser(&req); err != nil {
-			return renderSettingsResult(c, pages, "s3-result", settingsError("invalid form submission"))
+			return renderSettingsResult(c, pages, "s3-result", settingsError(localizer(c).T("common.invalid_form")))
 		}
 		if _, err := b.s3ConfigManager.Save(c.Context(), s3config.SaveParams{
 			Enabled: req.Enabled, Endpoint: req.Endpoint, Region: req.Region, Bucket: req.Bucket,
@@ -210,7 +211,7 @@ func handleSettingsSaveS3(vault *vaultState, store *session.Store, pages map[str
 		}); err != nil {
 			return renderSettingsResult(c, pages, "s3-result", settingsError(err.Error()))
 		}
-		return renderSettingsResult(c, pages, "s3-result", settingsOK("S3 settings saved. Mirroring/restore pick this up on the next unlock."))
+		return renderSettingsResult(c, pages, "s3-result", settingsOK(localizer(c).T("settings.result.s3_saved")))
 	}
 }
 
@@ -223,7 +224,7 @@ func handleSettingsTestS3(vault *vaultState, store *session.Store, pages map[str
 		s, err := b.s3ConfigManager.Get(c.Context())
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return renderSettingsResult(c, pages, "s3-test-result", settingsError("s3 is not configured yet"))
+				return renderSettingsResult(c, pages, "s3-test-result", settingsError(localizer(c).T("settings.result.s3_not_configured")))
 			}
 			return renderSettingsResult(c, pages, "s3-test-result", settingsError("loading s3 settings failed"))
 		}
@@ -244,7 +245,7 @@ func handleSettingsTestS3(vault *vaultState, store *session.Store, pages map[str
 		if err := client.Ping(pingCtx); err != nil {
 			return renderSettingsResult(c, pages, "s3-test-result", settingsError(err.Error()))
 		}
-		return renderSettingsResult(c, pages, "s3-test-result", settingsOK("Connected."))
+		return renderSettingsResult(c, pages, "s3-test-result", settingsOK(localizer(c).T("settings.result.s3_connected")))
 	}
 }
 
@@ -264,14 +265,14 @@ func handleSettingsSaveOAuth2(vault *vaultState, store *session.Store, pages map
 		resultName := "oauth2-" + provider + "-result"
 		var req settingsOAuth2FormRequest
 		if err := c.BodyParser(&req); err != nil {
-			return renderSettingsResult(c, pages, resultName, settingsError("invalid form submission"))
+			return renderSettingsResult(c, pages, resultName, settingsError(localizer(c).T("common.invalid_form")))
 		}
 		if _, err := b.oauth2ConfigMgr.Save(c.Context(), oauth2config.SaveParams{
 			Provider: provider, ClientID: req.ClientID, ClientSecret: req.ClientSecret, RedirectURL: req.RedirectURL,
 		}); err != nil {
 			return renderSettingsResult(c, pages, resultName, settingsError(err.Error()))
 		}
-		return renderSettingsResult(c, pages, resultName, settingsOK("Saved."))
+		return renderSettingsResult(c, pages, resultName, settingsOK(localizer(c).T("settings.result.oauth2_saved")))
 	}
 }
 
@@ -289,7 +290,7 @@ func handleSettingsSaveRetention(vault *vaultState, store *session.Store, pages 
 		}
 		var req settingsRetentionFormRequest
 		if err := c.BodyParser(&req); err != nil {
-			return renderSettingsResult(c, pages, "retention-result", settingsError("invalid form submission"))
+			return renderSettingsResult(c, pages, "retention-result", settingsError(localizer(c).T("common.invalid_form")))
 		}
 		local, err := parseOptionalDays(req.DefaultLocalDays)
 		if err != nil {
@@ -308,7 +309,7 @@ func handleSettingsSaveRetention(vault *vaultState, store *session.Store, pages 
 		}); err != nil {
 			return renderSettingsResult(c, pages, "retention-result", settingsError("saving retention settings failed"))
 		}
-		return renderSettingsResult(c, pages, "retention-result", settingsOK("Saved. Applies on the next retention run (daily, or `marchi retention run`)."))
+		return renderSettingsResult(c, pages, "retention-result", settingsOK(localizer(c).T("settings.result.retention_saved")))
 	}
 }
 

@@ -7,10 +7,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/yurydemin/marchi/internal/i18n"
 	"github.com/yurydemin/marchi/internal/logging"
 )
 
-func newLogsCmd() *cobra.Command {
+func newLogsCmd(loc *i18n.Localizer) *cobra.Command {
 	var (
 		lines int
 		date  string
@@ -20,7 +21,7 @@ func newLogsCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "logs",
-		Short: "Show recent application log lines",
+		Short: loc.T("cli.logs.short"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := configFrom(cmd.Context())
 

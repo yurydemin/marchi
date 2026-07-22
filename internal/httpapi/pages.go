@@ -38,7 +38,7 @@ func registerPages(app *fiber.App, vault *vaultState, store *session.Store, page
 		if err != nil {
 			return err
 		}
-		return pages["index"].ExecuteTemplate(c, "layout", pageData{Unlocked: true, Stats: stats})
+		return render(c, pages, "index", "layout", pageData{Unlocked: true, Stats: stats})
 	})
 }
 
@@ -48,7 +48,7 @@ func registerPages(app *fiber.App, vault *vaultState, store *session.Store, page
 // bare error.
 func renderLocked(c *fiber.Ctx, pages map[string]*template.Template) error {
 	c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
-	return pages["index"].ExecuteTemplate(c, "layout", pageData{Unlocked: false})
+	return render(c, pages, "index", "layout", pageData{Unlocked: false})
 }
 
 // pageBackend is the full-page-GET counterpart of requireUnlockedSession:

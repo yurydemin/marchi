@@ -7,7 +7,22 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yurydemin/marchi/internal/i18n"
 )
+
+// mustBind binds t's "T"/"conditionTypeLabel" to the English localizer —
+// every test in this file asserts against English strings, so this is
+// the test-local stand-in for what internal/httpapi's render() does with
+// the request's actually-resolved language.
+func mustBind(tb testing.TB, t *template.Template) *template.Template {
+	tb.Helper()
+	bound, err := Bind(t, i18n.NewLocalizer("en"))
+	if err != nil {
+		tb.Fatalf("Bind: %v", err)
+	}
+	return bound
+}
 
 // testStats mirrors the shape internal/httpapi's statsResponse feeds the
 // "index" page with (Unlocked branch). Kept local rather than importing
@@ -80,7 +95,7 @@ func TestParse_IndexPage_RendersLockedAndUnlockedContent(t *testing.T) {
 					},
 				},
 			}
-			if err := index.ExecuteTemplate(&buf, "layout", data); err != nil {
+			if err := mustBind(t, index).ExecuteTemplate(&buf, "layout", data); err != nil {
 				t.Fatalf("ExecuteTemplate: %v", err)
 			}
 			out := buf.String()
@@ -130,7 +145,7 @@ func TestParse_AccountsPage_RendersEmptyAndPopulatedLists(t *testing.T) {
 			Unlocked bool
 			Accounts []testAccount
 		}{Unlocked: true}
-		if err := accounts.ExecuteTemplate(&buf, "layout", data); err != nil {
+		if err := mustBind(t, accounts).ExecuteTemplate(&buf, "layout", data); err != nil {
 			t.Fatalf("ExecuteTemplate: %v", err)
 		}
 		if !strings.Contains(buf.String(), "No accounts yet") {
@@ -149,7 +164,7 @@ func TestParse_AccountsPage_RendersEmptyAndPopulatedLists(t *testing.T) {
 				{ID: 1, Email: "a@example.com", IMAPHost: "imap.example.com", IMAPPort: 993, IMAPTLS: "ssl", IsActive: true},
 			},
 		}
-		if err := accounts.ExecuteTemplate(&buf, "layout", data); err != nil {
+		if err := mustBind(t, accounts).ExecuteTemplate(&buf, "layout", data); err != nil {
 			t.Fatalf("ExecuteTemplate: %v", err)
 		}
 		out := buf.String()
@@ -175,7 +190,7 @@ func TestParse_AccountRowsFragment_HandlesEmptyToPopulatedTransition(t *testing.
 
 	t.Run("empty", func(t *testing.T) {
 		var buf bytes.Buffer
-		if err := accounts.ExecuteTemplate(&buf, "account-rows", []testAccount{}); err != nil {
+		if err := mustBind(t, accounts).ExecuteTemplate(&buf, "account-rows", []testAccount{}); err != nil {
 			t.Fatalf("ExecuteTemplate: %v", err)
 		}
 		out := buf.String()
@@ -187,7 +202,7 @@ func TestParse_AccountRowsFragment_HandlesEmptyToPopulatedTransition(t *testing.
 	t.Run("populated", func(t *testing.T) {
 		var buf bytes.Buffer
 		data := []testAccount{{ID: 1, Email: "a@example.com", IsActive: true}}
-		if err := accounts.ExecuteTemplate(&buf, "account-rows", data); err != nil {
+		if err := mustBind(t, accounts).ExecuteTemplate(&buf, "account-rows", data); err != nil {
 			t.Fatalf("ExecuteTemplate: %v", err)
 		}
 		out := buf.String()
@@ -210,7 +225,7 @@ func TestParse_AccountsPage_RowAndEditRowFragmentsRenderIndependently(t *testing
 
 	t.Run("account-row", func(t *testing.T) {
 		var buf bytes.Buffer
-		if err := accounts.ExecuteTemplate(&buf, "account-row", a); err != nil {
+		if err := mustBind(t, accounts).ExecuteTemplate(&buf, "account-row", a); err != nil {
 			t.Fatalf("ExecuteTemplate: %v", err)
 		}
 		if !strings.Contains(buf.String(), "row@example.com") {
@@ -220,7 +235,7 @@ func TestParse_AccountsPage_RowAndEditRowFragmentsRenderIndependently(t *testing
 
 	t.Run("account-edit-row", func(t *testing.T) {
 		var buf bytes.Buffer
-		if err := accounts.ExecuteTemplate(&buf, "account-edit-row", a); err != nil {
+		if err := mustBind(t, accounts).ExecuteTemplate(&buf, "account-edit-row", a); err != nil {
 			t.Fatalf("ExecuteTemplate: %v", err)
 		}
 		if !strings.Contains(buf.String(), `value="imap.example.com"`) {
@@ -235,10 +250,10 @@ func TestParse_AccountsPage_RowAndEditRowFragmentsRenderIndependently(t *testing
 			FolderCount int
 			Error       string
 		}{OK: true, FolderCount: 3}
-		if err := accounts.ExecuteTemplate(&buf, "test-result", data); err != nil {
+		if err := mustBind(t, accounts).ExecuteTemplate(&buf, "test-result", data); err != nil {
 			t.Fatalf("ExecuteTemplate: %v", err)
 		}
-		if !strings.Contains(buf.String(), "3 folder(s)") {
+		if !strings.Contains(buf.String(), "3 folders") {
 			t.Errorf("test-result fragment missing the folder count, got:\n%s", buf.String())
 		}
 	})
@@ -250,7 +265,7 @@ func TestParse_AccountsPage_RowAndEditRowFragmentsRenderIndependently(t *testing
 			FolderCount int
 			Error       string
 		}{Error: "connection refused"}
-		if err := accounts.ExecuteTemplate(&buf, "test-result", data); err != nil {
+		if err := mustBind(t, accounts).ExecuteTemplate(&buf, "test-result", data); err != nil {
 			t.Fatalf("ExecuteTemplate: %v", err)
 		}
 		if !strings.Contains(buf.String(), "connection refused") {
@@ -353,7 +368,7 @@ func TestParse_ArchivePage_RendersEmptyResults(t *testing.T) {
 	}{Unlocked: true, Sort: "relevance"}
 
 	var buf bytes.Buffer
-	if err := archive.ExecuteTemplate(&buf, "layout", data); err != nil {
+	if err := mustBind(t, archive).ExecuteTemplate(&buf, "layout", data); err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
 	}
 	if !strings.Contains(buf.String(), "No emails match this search") {
@@ -399,7 +414,7 @@ func TestParse_ArchivePage_RendersTreeResultsAndViewer(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := archive.ExecuteTemplate(&buf, "layout", data); err != nil {
+	if err := mustBind(t, archive).ExecuteTemplate(&buf, "layout", data); err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
 	}
 	out := buf.String()

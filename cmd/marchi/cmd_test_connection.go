@@ -8,10 +8,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/i18n"
 	"github.com/yurydemin/marchi/internal/imapclient"
 )
 
-func newTestConnectionCmd() *cobra.Command {
+func newTestConnectionCmd(loc *i18n.Localizer) *cobra.Command {
 	var (
 		imapHost     string
 		imapPort     int
@@ -21,7 +22,7 @@ func newTestConnectionCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "test-connection <email>",
-		Short: "Test IMAP connectivity and credentials without saving an account (FR-AM-04)",
+		Short: loc.T("cli.test_connection.short"),
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			email := args[0]

@@ -11,9 +11,10 @@ import (
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
 	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/i18n"
 )
 
-func newAddAccountCmd() *cobra.Command {
+func newAddAccountCmd(loc *i18n.Localizer) *cobra.Command {
 	var (
 		displayName  string
 		imapHost     string
@@ -24,7 +25,7 @@ func newAddAccountCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "add-account <email>",
-		Short: "Add an IMAP account (FR-AM-01)",
+		Short: loc.T("cli.add_account.short"),
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			email := args[0]
@@ -91,10 +92,10 @@ func newAddAccountCmd() *cobra.Command {
 	return cmd
 }
 
-func newListAccountsCmd() *cobra.Command {
+func newListAccountsCmd(loc *i18n.Localizer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list-accounts",
-		Short: "List configured IMAP accounts",
+		Short: loc.T("cli.list_accounts.short"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := configFrom(cmd.Context())
 			logger := loggerFrom(cmd.Context())

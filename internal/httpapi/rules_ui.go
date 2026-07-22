@@ -68,7 +68,7 @@ func handleRulesPage(vault *vaultState, store *session.Store, pages map[string]*
 		if err != nil {
 			return err
 		}
-		return pages["rules"].ExecuteTemplate(c, "layout", rulesPageData{
+		return render(c, pages, "rules", "layout", rulesPageData{
 			Unlocked: true, Rules: resp, DefaultConditions: defaultRuleConditions(),
 		})
 	}
@@ -97,7 +97,7 @@ func renderRuleRows(c *fiber.Ctx, b *backend, pages map[string]*template.Templat
 		return err
 	}
 	c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
-	return pages["rules"].ExecuteTemplate(c, "rule-rows", resp)
+	return render(c, pages, "rules", "rule-rows", resp)
 }
 
 // ruleFormRequest is the create/edit form's body shape — conditions
@@ -154,7 +154,7 @@ func handleRulesCreate(vault *vaultState, store *session.Store, pages map[string
 		}
 		var req ruleFormRequest
 		if err := c.BodyParser(&req); err != nil {
-			return ruleFragmentError(c, pages, fiber.StatusBadRequest, "invalid form submission")
+			return ruleFragmentError(c, pages, fiber.StatusBadRequest, localizer(c).T("common.invalid_form"))
 		}
 		conditions, action, err := req.parse()
 		if err != nil {
@@ -196,7 +196,7 @@ func handleRuleRowView(vault *vaultState, store *session.Store, pages map[string
 			return fiber.NewError(fiber.StatusInternalServerError, "loading rule failed")
 		}
 		c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
-		return pages["rules"].ExecuteTemplate(c, "rule-row", ruleResponseFrom(r))
+		return render(c, pages, "rules", "rule-row", ruleResponseFrom(r))
 	}
 }
 
@@ -218,7 +218,7 @@ func handleRuleRowEdit(vault *vaultState, store *session.Store, pages map[string
 			return fiber.NewError(fiber.StatusInternalServerError, "loading rule failed")
 		}
 		c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
-		return pages["rules"].ExecuteTemplate(c, "rule-edit-row", ruleResponseFrom(r))
+		return render(c, pages, "rules", "rule-edit-row", ruleResponseFrom(r))
 	}
 }
 
@@ -241,7 +241,7 @@ func handleRulesUpdate(vault *vaultState, store *session.Store, pages map[string
 		}
 		var req ruleFormRequest
 		if err := c.BodyParser(&req); err != nil {
-			return ruleFragmentError(c, pages, fiber.StatusBadRequest, "invalid form submission")
+			return ruleFragmentError(c, pages, fiber.StatusBadRequest, localizer(c).T("common.invalid_form"))
 		}
 		conditions, action, err := req.parse()
 		if err != nil {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/yurydemin/marchi/internal/db"
 	"github.com/yurydemin/marchi/internal/db/repo"
+	"github.com/yurydemin/marchi/internal/i18n"
 	"github.com/yurydemin/marchi/internal/reindex"
 )
 
@@ -14,10 +15,10 @@ import (
 // touches the (unencrypted) emails table and the local .eml files
 // themselves, never any credential, so there's nothing here that actually
 // needs the Master Key.
-func newReindexCmd() *cobra.Command {
+func newReindexCmd(loc *i18n.Localizer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "reindex",
-		Short: "Rebuild the full-text search index from the local .eml archive (FR-SR-04)",
+		Short: loc.T("cli.reindex.short"),
 		Long: "Rebuild the full-text search index from the local .eml archive (FR-SR-04).\n" +
 			"Do not run this while the server (`marchi` with no subcommand) is running against\n" +
 			"the same data directory — it deletes and recreates the index directory on disk, which\n" +

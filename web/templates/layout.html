@@ -16,14 +16,21 @@
       <div class="flex items-center gap-4 text-sm">
         {{if .Unlocked}}
         <nav class="flex items-center gap-4">
-          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/">Dashboard</a>
-          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/accounts">Accounts</a>
-          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/archive">Archive</a>
-          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/rules">Rules</a>
-          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/settings">Settings</a>
+          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/">{{T "nav.dashboard"}}</a>
+          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/accounts">{{T "nav.accounts"}}</a>
+          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/archive">{{T "nav.archive"}}</a>
+          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/rules">{{T "nav.rules"}}</a>
+          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/settings">{{T "nav.settings"}}</a>
         </nav>
         {{end}}
-        <button type="button" id="theme-toggle" class="rounded border border-stone-300 dark:border-stone-600 px-2 py-1 text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700" aria-label="Toggle dark mode">Dark</button>
+        <div class="flex items-center gap-1 text-xs font-medium text-stone-600 dark:text-stone-300">
+          {{range $code := langs}}
+          <a class="rounded px-1.5 py-1 uppercase hover:bg-stone-50 dark:hover:bg-stone-700" href="/lang/{{$code}}">{{$code}}</a>
+          {{end}}
+        </div>
+        <button type="button" id="theme-toggle"
+          class="rounded border border-stone-300 dark:border-stone-600 px-2 py-1 text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700"
+          aria-label="{{T "nav.toggle_dark_mode"}}" data-label-dark="{{T "nav.theme_dark"}}" data-label-light="{{T "nav.theme_light"}}">{{T "nav.theme_dark"}}</button>
       </div>
     </div>
   </header>

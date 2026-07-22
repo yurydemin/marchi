@@ -10,6 +10,8 @@ import (
 	"html/template"
 	"io/fs"
 
+	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/i18n"
 	"github.com/yurydemin/marchi/web"
 )
 
@@ -39,6 +41,28 @@ func Parse() (map[string]*template.Template, error) {
 		pages[name] = t
 	}
 	return pages, nil
+}
+
+// Bind returns a copy of t (a page from Parse's result) with "T" and
+// "conditionTypeLabel" rebound to loc, ready to Execute for one request.
+//
+// Templates are parsed once at startup (Parse), but the language a page
+// renders in is only known per-request. html/template resolves a func
+// call's target *value* at Execute time even though the call itself was
+// validated at Parse time — Clone gives each request its own template
+// handle to rebind those two names against without racing every other
+// concurrent request's Execute against the same shared *template.Template
+// (see https://pkg.go.dev/text/template#Template.Clone: "A common use is
+// to prepare... variants" of a common parsed template).
+func Bind(t *template.Template, loc *i18n.Localizer) (*template.Template, error) {
+	ct, err := t.Clone()
+	if err != nil {
+		return nil, fmt.Errorf("webui: cloning template for locale %q: %w", loc.Lang, err)
+	}
+	return ct.Funcs(template.FuncMap{
+		"T":                  loc.T,
+		"conditionTypeLabel": func(t domain.ConditionType) string { return conditionTypeLabel(loc, t) },
+	}), nil
 }
 
 // StaticFS returns the embedded CSS/JS assets, rooted so files are served

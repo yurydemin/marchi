@@ -214,7 +214,7 @@ func handleArchivePage(vault *vaultState, store *session.Store, pages map[string
 			data.Viewer = buildArchiveViewer(c, b, viewID, rows, accountEmailByID)
 		}
 
-		return pages["archive"].ExecuteTemplate(c, "layout", data)
+		return render(c, pages, "archive", "layout", data)
 	}
 }
 

@@ -7,12 +7,13 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/yurydemin/marchi/internal/db"
+	"github.com/yurydemin/marchi/internal/i18n"
 )
 
-func newMigrateCmd() *cobra.Command {
+func newMigrateCmd(loc *i18n.Localizer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "migrate",
-		Short: "Open the SQLite database and apply any pending schema migrations",
+		Short: loc.T("cli.migrate.short"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := configFrom(cmd.Context())
 			logger := loggerFrom(cmd.Context())

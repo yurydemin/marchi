@@ -1,24 +1,24 @@
 {{define "content"}}
-<h1 class="mb-6 text-xl font-semibold">Rules</h1>
+<h1 class="mb-6 text-xl font-semibold">{{T "rules.title"}}</h1>
 
 <div class="mb-8 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 p-6 shadow-sm">
-  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">Add rule</h2>
+  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">{{T "rules.add_rule_heading"}}</h2>
   <div id="rule-form-error" class="mb-3 text-sm text-red-600 dark:text-red-400" role="alert"></div>
   {{template "add-rule-form" .DefaultConditions}}
 </div>
 
-<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">Rules</h2>
-<p class="mb-3 text-xs text-stone-500 dark:text-stone-400">Evaluated top to bottom; the first matching rule wins. Drag a row (the ⠿ handle) to reorder.</p>
+<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">{{T "rules.heading"}}</h2>
+<p class="mb-3 text-xs text-stone-500 dark:text-stone-400">{{T "rules.help_text"}}</p>
 <div class="overflow-x-auto rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 shadow-sm">
   <table class="min-w-full divide-y divide-stone-200 dark:divide-stone-700 text-sm">
     <thead class="bg-stone-50 dark:bg-stone-900 text-left text-xs font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">
       <tr>
         <th class="px-4 py-2"></th>
-        <th class="px-4 py-2">Name</th>
-        <th class="px-4 py-2">Conditions</th>
-        <th class="px-4 py-2">Action</th>
-        <th class="px-4 py-2">Status</th>
-        <th class="px-4 py-2 text-right">Actions</th>
+        <th class="px-4 py-2">{{T "common.name"}}</th>
+        <th class="px-4 py-2">{{T "rules.col_conditions"}}</th>
+        <th class="px-4 py-2">{{T "common.action"}}</th>
+        <th class="px-4 py-2">{{T "common.status"}}</th>
+        <th class="px-4 py-2 text-right">{{T "common.actions"}}</th>
       </tr>
     </thead>
     <tbody id="rules-tbody" data-rules-tbody class="divide-y divide-stone-200 dark:divide-stone-700">
@@ -38,27 +38,27 @@
     <select data-role="cond-type" class="rounded border border-stone-300 dark:border-stone-600 px-2 py-1 text-xs">
       {{range conditionTypes}}<option value="{{.}}">{{conditionTypeLabel .}}</option>{{end}}
     </select>
-    <input data-role="cond-value" type="text" class="flex-1 rounded border border-stone-300 dark:border-stone-600 px-2 py-1 text-xs" placeholder="value">
-    <button type="button" data-action="remove-node" class="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-400">Remove</button>
+    <input data-role="cond-value" type="text" class="flex-1 rounded border border-stone-300 dark:border-stone-600 px-2 py-1 text-xs" placeholder="{{T "rules.leaf_value_placeholder"}}">
+    <button type="button" data-action="remove-node" class="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-400">{{T "rules.remove"}}</button>
   </div>
 </template>
 <template id="tpl-rule-group">
   <div class="rule-group rounded border border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-900 p-3" data-node data-kind="group">
     <div class="mb-2 flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <span class="text-xs font-medium text-stone-500 dark:text-stone-400">Match</span>
+        <span class="text-xs font-medium text-stone-500 dark:text-stone-400">{{T "rules.match_label"}}</span>
         <select data-role="group-op" class="rounded border border-stone-300 dark:border-stone-600 px-2 py-1 text-xs">
-          <option value="and">ALL (AND)</option>
-          <option value="or">ANY (OR)</option>
+          <option value="and">{{T "rules.match_all"}}</option>
+          <option value="or">{{T "rules.match_any"}}</option>
         </select>
-        <span class="text-xs text-stone-500 dark:text-stone-400">of:</span>
+        <span class="text-xs text-stone-500 dark:text-stone-400">{{T "rules.match_of"}}</span>
       </div>
-      <button type="button" data-action="remove-node" class="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-400">Remove group</button>
+      <button type="button" data-action="remove-node" class="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-400">{{T "rules.remove_group"}}</button>
     </div>
     <div data-role="children" class="ml-4 space-y-2 border-l-2 border-stone-200 dark:border-stone-700 pl-3"></div>
     <div class="mt-2 flex gap-3">
-      <button type="button" data-action="add-condition" class="text-xs font-medium text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100">+ Condition</button>
-      <button type="button" data-action="add-group" class="text-xs font-medium text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100">+ Nested group</button>
+      <button type="button" data-action="add-condition" class="text-xs font-medium text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100">{{T "rules.add_condition"}}</button>
+      <button type="button" data-action="add-group" class="text-xs font-medium text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100">{{T "rules.add_nested_group"}}</button>
     </div>
   </div>
 </template>
@@ -76,7 +76,7 @@ transition one row at a time.
 {{if .}}
 {{range .}}{{template "rule-row" .}}{{end}}
 {{else}}
-<tr><td colspan="6" class="px-4 py-6 text-center text-stone-500 dark:text-stone-400">No rules yet. Everything archives by default until you add one.</td></tr>
+<tr><td colspan="6" class="px-4 py-6 text-center text-stone-500 dark:text-stone-400">{{T "rules.empty"}}</td></tr>
 {{end}}
 {{end}}
 
@@ -94,32 +94,32 @@ resets it client-side instead (see its htmx:afterRequest listener for
 <form id="add-rule-form" hx-post="/rules" hx-target="#rules-tbody" hx-swap="innerHTML">
   <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
     <div>
-      <label class="mb-1 block text-sm font-medium" for="rule-name">Name</label>
+      <label class="mb-1 block text-sm font-medium" for="rule-name">{{T "rules.field_name"}}</label>
       <input class="w-full rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm focus:border-amber-600 dark:focus:border-amber-500 focus:outline-none" type="text" id="rule-name" name="name" required>
     </div>
     <div>
-      <label class="mb-1 block text-sm font-medium" for="rule-action">Action</label>
+      <label class="mb-1 block text-sm font-medium" for="rule-action">{{T "rules.field_action"}}</label>
       <select class="w-full rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm focus:border-amber-600 dark:focus:border-amber-500 focus:outline-none" id="rule-action" name="action">
-        <option value="archive">Archive</option>
-        <option value="skip">Skip (don't archive)</option>
-        <option value="archive_and_delete">Archive and delete from server</option>
-        <option value="archive_and_mark_read">Archive and mark read</option>
+        <option value="archive">{{T "rules.action_archive"}}</option>
+        <option value="skip">{{T "rules.action_skip"}}</option>
+        <option value="archive_and_delete">{{T "rules.action_archive_and_delete"}}</option>
+        <option value="archive_and_mark_read">{{T "rules.action_archive_and_mark_read"}}</option>
       </select>
     </div>
   </div>
   <label class="mt-3 flex items-center gap-2 text-sm">
     <input type="checkbox" name="is_active" value="true" checked>
-    Active
+    {{T "rules.field_active"}}
   </label>
 
   <div class="mt-4">
-    <span class="mb-2 block text-sm font-medium">Conditions</span>
+    <span class="mb-2 block text-sm font-medium">{{T "rules.conditions_label"}}</span>
     <div data-rule-builder>
       {{template "rule-node" (ruleNodeView . 1)}}
     </div>
   </div>
 
-  <button class="mt-4 rounded bg-amber-800 dark:bg-amber-600 dark:text-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:hover:bg-amber-500" type="submit">Add rule</button>
+  <button class="mt-4 rounded bg-amber-800 dark:bg-amber-600 dark:text-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:hover:bg-amber-500" type="submit">{{T "rules.add_rule_button"}}</button>
 </form>
 {{end}}
 
@@ -140,22 +140,22 @@ identically.
 <div class="rule-group rounded border border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-900 p-3" data-node data-kind="group" data-depth="{{.Depth}}">
   <div class="mb-2 flex items-center justify-between">
     <div class="flex items-center gap-2">
-      <span class="text-xs font-medium text-stone-500 dark:text-stone-400">Match</span>
+      <span class="text-xs font-medium text-stone-500 dark:text-stone-400">{{T "rules.match_label"}}</span>
       <select data-role="group-op" class="rounded border border-stone-300 dark:border-stone-600 px-2 py-1 text-xs">
-        <option value="and" {{if eq .Node.Op "and"}}selected{{end}}>ALL (AND)</option>
-        <option value="or" {{if eq .Node.Op "or"}}selected{{end}}>ANY (OR)</option>
+        <option value="and" {{if eq .Node.Op "and"}}selected{{end}}>{{T "rules.match_all"}}</option>
+        <option value="or" {{if eq .Node.Op "or"}}selected{{end}}>{{T "rules.match_any"}}</option>
       </select>
-      <span class="text-xs text-stone-500 dark:text-stone-400">of:</span>
+      <span class="text-xs text-stone-500 dark:text-stone-400">{{T "rules.match_of"}}</span>
     </div>
-    {{if gt .Depth 1}}<button type="button" data-action="remove-node" class="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-400">Remove group</button>{{end}}
+    {{if gt .Depth 1}}<button type="button" data-action="remove-node" class="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-400">{{T "rules.remove_group"}}</button>{{end}}
   </div>
   <div data-role="children" class="ml-4 space-y-2 border-l-2 border-stone-200 dark:border-stone-700 pl-3">
     {{$depth := .Depth}}
     {{range .Node.Children}}{{template "rule-node" (ruleNodeView . (add $depth 1))}}{{end}}
   </div>
   <div class="mt-2 flex gap-3">
-    <button type="button" data-action="add-condition" class="text-xs font-medium text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100">+ Condition</button>
-    {{if lt .Depth 3}}<button type="button" data-action="add-group" class="text-xs font-medium text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100">+ Nested group</button>{{end}}
+    <button type="button" data-action="add-condition" class="text-xs font-medium text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100">{{T "rules.add_condition"}}</button>
+    {{if lt .Depth 3}}<button type="button" data-action="add-group" class="text-xs font-medium text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100">{{T "rules.add_nested_group"}}</button>{{end}}
   </div>
 </div>
 {{else}}
@@ -164,15 +164,15 @@ identically.
     {{$want := .Node.Type}}
     {{range conditionTypes}}<option value="{{.}}" {{if eq $want .}}selected{{end}}>{{conditionTypeLabel .}}</option>{{end}}
   </select>
-  <input data-role="cond-value" type="text" class="flex-1 rounded border border-stone-300 dark:border-stone-600 px-2 py-1 text-xs" value="{{.Node.Value}}" placeholder="value">
-  <button type="button" data-action="remove-node" class="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-400">Remove</button>
+  <input data-role="cond-value" type="text" class="flex-1 rounded border border-stone-300 dark:border-stone-600 px-2 py-1 text-xs" value="{{.Node.Value}}" placeholder="{{T "rules.leaf_value_placeholder"}}">
+  <button type="button" data-action="remove-node" class="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-400">{{T "rules.remove"}}</button>
 </div>
 {{end}}
 {{end}}
 
 {{define "rule-row"}}
 <tr id="rule-row-{{.ID}}" data-rule-id="{{.ID}}" draggable="true" class="cursor-move">
-  <td class="px-2 py-2 text-stone-400 dark:text-stone-500" title="Drag to reorder">&#9776;</td>
+  <td class="px-2 py-2 text-stone-400 dark:text-stone-500" title="{{T "rules.drag_to_reorder"}}">&#9776;</td>
   <td class="px-4 py-2 font-medium">{{.Name}}</td>
   <td class="max-w-xs truncate px-4 py-2 text-xs text-stone-500 dark:text-stone-400" title="{{summarizeConditions .Conditions}}">{{summarizeConditions .Conditions}}</td>
   <td class="px-4 py-2 text-xs">{{.Action}}</td>
@@ -180,12 +180,12 @@ identically.
     <button
       class="rounded-full px-2 py-0.5 text-xs font-medium {{if .IsActive}}bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-400{{else}}bg-stone-100 dark:bg-stone-700 text-stone-500 dark:text-stone-400{{end}}"
       hx-put="/rules/{{.ID}}/toggle" hx-target="#rules-tbody" hx-swap="innerHTML">
-      {{if .IsActive}}active{{else}}paused{{end}}
+      {{if .IsActive}}{{T "common.active"}}{{else}}{{T "common.paused"}}{{end}}
     </button>
   </td>
   <td class="px-4 py-2 text-right">
-    <button class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" hx-get="/rules/{{.ID}}/edit" hx-target="#rule-row-{{.ID}}" hx-swap="outerHTML">Edit</button>
-    <button class="ml-2 text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-400" hx-delete="/rules/{{.ID}}" hx-target="#rules-tbody" hx-swap="innerHTML" hx-confirm="Delete this rule?">Delete</button>
+    <button class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" hx-get="/rules/{{.ID}}/edit" hx-target="#rule-row-{{.ID}}" hx-swap="outerHTML">{{T "common.edit"}}</button>
+    <button class="ml-2 text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-400" hx-delete="/rules/{{.ID}}" hx-target="#rules-tbody" hx-swap="innerHTML" hx-confirm="{{T "rules.delete_confirm"}}">{{T "common.delete"}}</button>
   </td>
 </tr>
 {{end}}
@@ -196,34 +196,34 @@ identically.
     <form hx-put="/rules/{{.ID}}" hx-target="#rules-tbody" hx-swap="innerHTML">
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
-          <label class="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400" for="edit-rule-name-{{.ID}}">Name</label>
+          <label class="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400" for="edit-rule-name-{{.ID}}">{{T "rules.field_name"}}</label>
           <input class="w-full rounded border border-stone-300 dark:border-stone-600 px-2 py-1 text-sm" type="text" id="edit-rule-name-{{.ID}}" name="name" value="{{.Name}}" required>
         </div>
         <div>
-          <label class="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400" for="edit-rule-action-{{.ID}}">Action</label>
+          <label class="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400" for="edit-rule-action-{{.ID}}">{{T "rules.field_action"}}</label>
           <select class="w-full rounded border border-stone-300 dark:border-stone-600 px-2 py-1 text-sm" id="edit-rule-action-{{.ID}}" name="action">
-            <option value="archive" {{if eq .Action "archive"}}selected{{end}}>Archive</option>
-            <option value="skip" {{if eq .Action "skip"}}selected{{end}}>Skip (don't archive)</option>
-            <option value="archive_and_delete" {{if eq .Action "archive_and_delete"}}selected{{end}}>Archive and delete from server</option>
-            <option value="archive_and_mark_read" {{if eq .Action "archive_and_mark_read"}}selected{{end}}>Archive and mark read</option>
+            <option value="archive" {{if eq .Action "archive"}}selected{{end}}>{{T "rules.action_archive"}}</option>
+            <option value="skip" {{if eq .Action "skip"}}selected{{end}}>{{T "rules.action_skip"}}</option>
+            <option value="archive_and_delete" {{if eq .Action "archive_and_delete"}}selected{{end}}>{{T "rules.action_archive_and_delete"}}</option>
+            <option value="archive_and_mark_read" {{if eq .Action "archive_and_mark_read"}}selected{{end}}>{{T "rules.action_archive_and_mark_read"}}</option>
           </select>
         </div>
       </div>
       <label class="mt-2 flex items-center gap-2 text-sm">
         <input type="checkbox" name="is_active" value="true" {{if .IsActive}}checked{{end}}>
-        Active
+        {{T "rules.field_active"}}
       </label>
 
       <div class="mt-3">
-        <span class="mb-2 block text-xs font-medium text-stone-500 dark:text-stone-400">Conditions</span>
+        <span class="mb-2 block text-xs font-medium text-stone-500 dark:text-stone-400">{{T "rules.conditions_label"}}</span>
         <div data-rule-builder>
           {{template "rule-node" (ruleNodeView .Conditions 1)}}
         </div>
       </div>
 
       <div class="mt-3 flex gap-2">
-        <button class="rounded bg-amber-800 dark:bg-amber-600 dark:text-stone-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 dark:hover:bg-amber-500" type="submit">Save</button>
-        <button class="rounded border border-stone-300 dark:border-stone-600 px-3 py-1.5 text-sm font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700" type="button" hx-get="/rules/{{.ID}}" hx-target="#rule-row-{{.ID}}" hx-swap="outerHTML">Cancel</button>
+        <button class="rounded bg-amber-800 dark:bg-amber-600 dark:text-stone-950 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 dark:hover:bg-amber-500" type="submit">{{T "common.save"}}</button>
+        <button class="rounded border border-stone-300 dark:border-stone-600 px-3 py-1.5 text-sm font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700" type="button" hx-get="/rules/{{.ID}}" hx-target="#rule-row-{{.ID}}" hx-swap="outerHTML">{{T "common.cancel"}}</button>
       </div>
     </form>
   </td>

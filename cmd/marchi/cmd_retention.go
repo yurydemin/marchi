@@ -8,17 +8,18 @@ import (
 	"github.com/yurydemin/marchi/internal/db"
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
+	"github.com/yurydemin/marchi/internal/i18n"
 	"github.com/yurydemin/marchi/internal/retention"
 	"github.com/yurydemin/marchi/internal/s3config"
 	"github.com/yurydemin/marchi/internal/search"
 )
 
-func newRetentionCmd() *cobra.Command {
+func newRetentionCmd(loc *i18n.Localizer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "retention",
-		Short: "Manage the archive's retention lifecycle (FR-RE-04)",
+		Short: loc.T("cli.retention.short"),
 	}
-	cmd.AddCommand(newRetentionRunCmd())
+	cmd.AddCommand(newRetentionRunCmd(loc))
 	return cmd
 }
 
@@ -27,10 +28,10 @@ func newRetentionCmd() *cobra.Command {
 // callable on demand for manual runs or testing without waiting for
 // 03:00. Needs the Master Key because Stage B->C (deleting from S3)
 // requires decrypting the saved S3 credentials.
-func newRetentionRunCmd() *cobra.Command {
+func newRetentionRunCmd(loc *i18n.Localizer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "run",
-		Short: "Run one retention pass now (Stage A->B->C, FR-RE-04)",
+		Short: loc.T("cli.retention_run.short"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := configFrom(cmd.Context())
 			logger := loggerFrom(cmd.Context())

@@ -10,14 +10,15 @@ import (
 	"github.com/yurydemin/marchi/internal/db"
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
+	"github.com/yurydemin/marchi/internal/i18n"
 	"github.com/yurydemin/marchi/internal/search"
 	syncengine "github.com/yurydemin/marchi/internal/sync"
 )
 
-func newSyncCmd() *cobra.Command {
+func newSyncCmd(loc *i18n.Localizer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "sync <email>",
-		Short: "Sync an account: folder list (FR-SE-01) then new messages in each folder",
+		Short: loc.T("cli.sync.short"),
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			email := args[0]
