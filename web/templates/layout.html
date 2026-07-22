@@ -9,21 +9,21 @@
   <script src="/static/js/htmx.min.js" defer></script>
   <script src="/static/js/app.js" defer></script>
 </head>
-<body class="h-full bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-  <header class="border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+<body class="h-full bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-stone-100">
+  <header class="border-b border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800">
     <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
       <span class="text-lg font-semibold">Marchi</span>
       <div class="flex items-center gap-4 text-sm">
         {{if .Unlocked}}
         <nav class="flex items-center gap-4">
-          <a class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100" href="/">Dashboard</a>
-          <a class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100" href="/accounts">Accounts</a>
-          <a class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100" href="/archive">Archive</a>
-          <a class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100" href="/rules">Rules</a>
-          <a class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100" href="/settings">Settings</a>
+          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/">Dashboard</a>
+          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/accounts">Accounts</a>
+          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/archive">Archive</a>
+          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/rules">Rules</a>
+          <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/settings">Settings</a>
         </nav>
         {{end}}
-        <button type="button" id="theme-toggle" class="rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700" aria-label="Toggle dark mode">Dark</button>
+        <button type="button" id="theme-toggle" class="rounded border border-stone-300 dark:border-stone-600 px-2 py-1 text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700" aria-label="Toggle dark mode">Dark</button>
       </div>
     </div>
   </header>
