@@ -1,31 +1,31 @@
 {{define "content"}}
 <h1 class="mb-6 text-xl font-semibold">Settings</h1>
 
-<div class="mb-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">Master Key</h2>
-  <p class="mb-3 text-xs text-slate-500">Changing your password re-encrypts nothing else — every IMAP password, OAuth2 token, S3 credential, and email already uploaded to S3 stays exactly as it is.</p>
+<div class="mb-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm">
+  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Master Key</h2>
+  <p class="mb-3 text-xs text-slate-500 dark:text-slate-400">Changing your password re-encrypts nothing else — every IMAP password, OAuth2 token, S3 credential, and email already uploaded to S3 stays exactly as it is.</p>
   <form hx-post="/settings/master-key" hx-target="#master-key-result" hx-swap="innerHTML" class="grid grid-cols-1 gap-3 sm:grid-cols-3">
     <div>
       <label class="mb-1 block text-sm font-medium" for="current_password">Current password</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="password" id="current_password" name="current_password" required>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="password" id="current_password" name="current_password" required>
     </div>
     <div>
       <label class="mb-1 block text-sm font-medium" for="new_password">New password</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="password" id="new_password" name="new_password" minlength="12" required>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="password" id="new_password" name="new_password" minlength="12" required>
     </div>
     <div>
       <label class="mb-1 block text-sm font-medium" for="confirm_password">Confirm new password</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="password" id="confirm_password" name="confirm_password" minlength="12" required>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="password" id="confirm_password" name="confirm_password" minlength="12" required>
     </div>
     <div class="sm:col-span-3">
-      <button class="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700" type="submit">Change Master Key</button>
+      <button class="rounded bg-slate-900 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:hover:bg-slate-300" type="submit">Change Master Key</button>
       <div id="master-key-result" class="mt-2 text-sm"></div>
     </div>
   </form>
 </div>
 
-<div class="mb-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">S3 Storage</h2>
+<div class="mb-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm">
+  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">S3 Storage</h2>
   <form hx-put="/settings/s3" hx-target="#s3-result" hx-swap="innerHTML" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
     <label class="flex items-center gap-2 text-sm sm:col-span-2">
       <input type="checkbox" name="enabled" value="true" {{if .S3.Enabled}}checked{{end}}>
@@ -33,27 +33,27 @@
     </label>
     <div>
       <label class="mb-1 block text-sm font-medium" for="s3_endpoint">Endpoint</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="text" id="s3_endpoint" name="endpoint" value="{{.S3.Endpoint}}" placeholder="https://s3.amazonaws.com or MinIO URL">
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="text" id="s3_endpoint" name="endpoint" value="{{.S3.Endpoint}}" placeholder="https://s3.amazonaws.com or MinIO URL">
     </div>
     <div>
       <label class="mb-1 block text-sm font-medium" for="s3_region">Region</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="text" id="s3_region" name="region" value="{{.S3.Region}}" required>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="text" id="s3_region" name="region" value="{{.S3.Region}}" required>
     </div>
     <div>
       <label class="mb-1 block text-sm font-medium" for="s3_bucket">Bucket</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="text" id="s3_bucket" name="bucket" value="{{.S3.Bucket}}" required>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="text" id="s3_bucket" name="bucket" value="{{.S3.Bucket}}" required>
     </div>
     <div>
       <label class="mb-1 block text-sm font-medium" for="s3_storage_class">Storage class</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="text" id="s3_storage_class" name="storage_class" value="{{.S3.StorageClass}}" placeholder="STANDARD">
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="text" id="s3_storage_class" name="storage_class" value="{{.S3.StorageClass}}" placeholder="STANDARD">
     </div>
     <div>
-      <label class="mb-1 block text-sm font-medium" for="s3_access_key">Access key {{if .S3.CredentialsConfigured}}<span class="font-normal text-slate-400">(configured — leave blank to keep)</span>{{end}}</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="password" id="s3_access_key" name="access_key">
+      <label class="mb-1 block text-sm font-medium" for="s3_access_key">Access key {{if .S3.CredentialsConfigured}}<span class="font-normal text-slate-400 dark:text-slate-500">(configured — leave blank to keep)</span>{{end}}</label>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="password" id="s3_access_key" name="access_key">
     </div>
     <div>
-      <label class="mb-1 block text-sm font-medium" for="s3_secret_key">Secret key {{if .S3.CredentialsConfigured}}<span class="font-normal text-slate-400">(configured — leave blank to keep)</span>{{end}}</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="password" id="s3_secret_key" name="secret_key">
+      <label class="mb-1 block text-sm font-medium" for="s3_secret_key">Secret key {{if .S3.CredentialsConfigured}}<span class="font-normal text-slate-400 dark:text-slate-500">(configured — leave blank to keep)</span>{{end}}</label>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="password" id="s3_secret_key" name="secret_key">
     </div>
     <label class="flex items-center gap-2 text-sm">
       <input type="checkbox" name="path_style" value="true" {{if .S3.PathStyle}}checked{{end}}>
@@ -64,8 +64,8 @@
       Skip TLS verification (self-signed endpoints only)
     </label>
     <div class="sm:col-span-2">
-      <button class="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700" type="submit">Save S3 settings</button>
-      <button class="ml-2 rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50" type="button"
+      <button class="rounded bg-slate-900 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:hover:bg-slate-300" type="submit">Save S3 settings</button>
+      <button class="ml-2 rounded border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700" type="button"
         hx-post="/settings/s3/test" hx-target="#s3-test-result" hx-swap="innerHTML">Test connection</button>
       <div id="s3-result" class="mt-2 text-sm"></div>
       <div id="s3-test-result" class="mt-2 text-sm"></div>
@@ -73,85 +73,85 @@
   </form>
 </div>
 
-<div class="mb-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">OAuth2 Apps (BYO)</h2>
-  <p class="mb-4 text-xs text-slate-500">Register your own OAuth2 application with Google/Microsoft and enter its credentials here — Marchi doesn't ship a shared client.</p>
+<div class="mb-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm">
+  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">OAuth2 Apps (BYO)</h2>
+  <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">Register your own OAuth2 application with Google/Microsoft and enter its credentials here — Marchi doesn't ship a shared client.</p>
 
-  <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Google</h3>
+  <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Google</h3>
   <form hx-put="/settings/oauth2/google" hx-target="#oauth2-google-result" hx-swap="innerHTML" class="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
     <div>
-      <label class="mb-1 block text-xs font-medium text-slate-500" for="google_client_id">Client ID</label>
-      <input class="w-full rounded border border-slate-300 px-2 py-1 text-sm" type="text" id="google_client_id" name="client_id" value="{{if .GoogleApp}}{{.GoogleApp.ClientID}}{{end}}">
+      <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="google_client_id">Client ID</label>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-sm" type="text" id="google_client_id" name="client_id" value="{{if .GoogleApp}}{{.GoogleApp.ClientID}}{{end}}">
     </div>
     <div>
-      <label class="mb-1 block text-xs font-medium text-slate-500" for="google_client_secret">Client secret {{if .GoogleApp}}{{if .GoogleApp.CredentialsConfigured}}<span class="font-normal text-slate-400">(set)</span>{{end}}{{end}}</label>
-      <input class="w-full rounded border border-slate-300 px-2 py-1 text-sm" type="password" id="google_client_secret" name="client_secret">
+      <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="google_client_secret">Client secret {{if .GoogleApp}}{{if .GoogleApp.CredentialsConfigured}}<span class="font-normal text-slate-400 dark:text-slate-500">(set)</span>{{end}}{{end}}</label>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-sm" type="password" id="google_client_secret" name="client_secret">
     </div>
     <div>
-      <label class="mb-1 block text-xs font-medium text-slate-500" for="google_redirect_url">Redirect URL</label>
-      <input class="w-full rounded border border-slate-300 px-2 py-1 text-sm" type="text" id="google_redirect_url" name="redirect_url" value="{{if .GoogleApp}}{{.GoogleApp.RedirectURL}}{{end}}">
+      <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="google_redirect_url">Redirect URL</label>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-sm" type="text" id="google_redirect_url" name="redirect_url" value="{{if .GoogleApp}}{{.GoogleApp.RedirectURL}}{{end}}">
     </div>
     <div class="sm:col-span-3">
-      <button class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700" type="submit">Save</button>
+      <button class="rounded bg-slate-900 dark:bg-slate-100 dark:text-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:hover:bg-slate-300" type="submit">Save</button>
       <div id="oauth2-google-result" class="mt-2 text-sm"></div>
     </div>
   </form>
 
-  <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Microsoft</h3>
+  <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Microsoft</h3>
   <form hx-put="/settings/oauth2/microsoft" hx-target="#oauth2-microsoft-result" hx-swap="innerHTML" class="grid grid-cols-1 gap-3 sm:grid-cols-3">
     <div>
-      <label class="mb-1 block text-xs font-medium text-slate-500" for="ms_client_id">Client ID</label>
-      <input class="w-full rounded border border-slate-300 px-2 py-1 text-sm" type="text" id="ms_client_id" name="client_id" value="{{if .MicrosoftApp}}{{.MicrosoftApp.ClientID}}{{end}}">
+      <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="ms_client_id">Client ID</label>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-sm" type="text" id="ms_client_id" name="client_id" value="{{if .MicrosoftApp}}{{.MicrosoftApp.ClientID}}{{end}}">
     </div>
     <div>
-      <label class="mb-1 block text-xs font-medium text-slate-500" for="ms_client_secret">Client secret {{if .MicrosoftApp}}{{if .MicrosoftApp.CredentialsConfigured}}<span class="font-normal text-slate-400">(set)</span>{{end}}{{end}}</label>
-      <input class="w-full rounded border border-slate-300 px-2 py-1 text-sm" type="password" id="ms_client_secret" name="client_secret">
+      <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="ms_client_secret">Client secret {{if .MicrosoftApp}}{{if .MicrosoftApp.CredentialsConfigured}}<span class="font-normal text-slate-400 dark:text-slate-500">(set)</span>{{end}}{{end}}</label>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-sm" type="password" id="ms_client_secret" name="client_secret">
     </div>
     <div>
-      <label class="mb-1 block text-xs font-medium text-slate-500" for="ms_redirect_url">Redirect URL</label>
-      <input class="w-full rounded border border-slate-300 px-2 py-1 text-sm" type="text" id="ms_redirect_url" name="redirect_url" value="{{if .MicrosoftApp}}{{.MicrosoftApp.RedirectURL}}{{end}}">
+      <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="ms_redirect_url">Redirect URL</label>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-sm" type="text" id="ms_redirect_url" name="redirect_url" value="{{if .MicrosoftApp}}{{.MicrosoftApp.RedirectURL}}{{end}}">
     </div>
     <div class="sm:col-span-3">
-      <button class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700" type="submit">Save</button>
+      <button class="rounded bg-slate-900 dark:bg-slate-100 dark:text-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:hover:bg-slate-300" type="submit">Save</button>
       <div id="oauth2-microsoft-result" class="mt-2 text-sm"></div>
     </div>
   </form>
 </div>
 
-<div class="mb-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">Retention Defaults</h2>
-  <p class="mb-3 text-xs text-slate-500">Archive-wide defaults (FR-RE-04) — leave a field blank for "never". Any account can override these individually.</p>
+<div class="mb-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm">
+  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Retention Defaults</h2>
+  <p class="mb-3 text-xs text-slate-500 dark:text-slate-400">Archive-wide defaults (FR-RE-04) — leave a field blank for "never". Any account can override these individually.</p>
   <form hx-put="/settings/retention" hx-target="#retention-result" hx-swap="innerHTML" class="grid grid-cols-1 gap-3 sm:grid-cols-3">
     <div>
       <label class="mb-1 block text-sm font-medium" for="default_local_days">Local days (before evicting to S3)</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="number" min="0" id="default_local_days" name="default_local_days" value="{{if .Retention.DefaultLocalDays}}{{.Retention.DefaultLocalDays}}{{end}}" placeholder="never">
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="number" min="0" id="default_local_days" name="default_local_days" value="{{if .Retention.DefaultLocalDays}}{{.Retention.DefaultLocalDays}}{{end}}" placeholder="never">
     </div>
     <div>
       <label class="mb-1 block text-sm font-medium" for="default_move_to_s3_days">Move-to-S3 days</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="number" min="0" id="default_move_to_s3_days" name="default_move_to_s3_days" value="{{if .Retention.DefaultMoveToS3Days}}{{.Retention.DefaultMoveToS3Days}}{{end}}" placeholder="never">
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="number" min="0" id="default_move_to_s3_days" name="default_move_to_s3_days" value="{{if .Retention.DefaultMoveToS3Days}}{{.Retention.DefaultMoveToS3Days}}{{end}}" placeholder="never">
     </div>
     <div>
       <label class="mb-1 block text-sm font-medium" for="default_s3_days">S3 days (before deleting entirely)</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="number" min="0" id="default_s3_days" name="default_s3_days" value="{{if .Retention.DefaultS3Days}}{{.Retention.DefaultS3Days}}{{end}}" placeholder="never">
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="number" min="0" id="default_s3_days" name="default_s3_days" value="{{if .Retention.DefaultS3Days}}{{.Retention.DefaultS3Days}}{{end}}" placeholder="never">
     </div>
     <div class="sm:col-span-3">
-      <button class="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700" type="submit">Save retention defaults</button>
+      <button class="rounded bg-slate-900 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:hover:bg-slate-300" type="submit">Save retention defaults</button>
       <div id="retention-result" class="mt-2 text-sm"></div>
     </div>
   </form>
 </div>
 
-<div class="mb-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">Search Index</h2>
-  <button class="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700" type="button" data-action="trigger-reindex">Rebuild index</button>
-  <span id="reindex-status" class="ml-3 text-sm text-slate-500"></span>
+<div class="mb-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm">
+  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Search Index</h2>
+  <button class="rounded bg-slate-900 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:hover:bg-slate-300" type="button" data-action="trigger-reindex">Rebuild index</button>
+  <span id="reindex-status" class="ml-3 text-sm text-slate-500 dark:text-slate-400"></span>
 </div>
 
-<div class="rounded-lg border border-slate-200 bg-white shadow-sm">
-  <h2 class="border-b border-slate-200 p-6 pb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">Recent Sync Runs</h2>
+<div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm">
+  <h2 class="border-b border-slate-200 dark:border-slate-700 p-6 pb-4 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Recent Sync Runs</h2>
   <div class="overflow-x-auto">
-    <table class="min-w-full divide-y divide-slate-200 text-sm">
-      <thead class="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+    <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700 text-sm">
+      <thead class="bg-slate-50 dark:bg-slate-900 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
         <tr>
           <th class="px-4 py-2">Account</th>
           <th class="px-4 py-2">Started</th>
@@ -161,12 +161,12 @@
           <th class="px-4 py-2">Status</th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-slate-200">
+      <tbody class="divide-y divide-slate-200 dark:divide-slate-700">
         {{if .SyncLogs}}
         {{range .SyncLogs}}
         <tr>
           <td class="px-4 py-2">{{.Email}}</td>
-          <td class="px-4 py-2 text-xs text-slate-500">{{formatDate .StartedAt}}</td>
+          <td class="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{{formatDate .StartedAt}}</td>
           <td class="px-4 py-2">{{.EmailsProcessed}}</td>
           <td class="px-4 py-2">{{.EmailsArchived}}</td>
           <td class="px-4 py-2">{{.Errors}}</td>
@@ -174,7 +174,7 @@
         </tr>
         {{end}}
         {{else}}
-        <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">No sync runs yet.</td></tr>
+        <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500 dark:text-slate-400">No sync runs yet.</td></tr>
         {{end}}
       </tbody>
     </table>
@@ -190,5 +190,5 @@
 {{define "retention-result"}}{{template "settings-result" .}}{{end}}
 
 {{define "settings-result"}}
-{{if .OK}}<span class="text-green-700">{{.Message}}</span>{{else}}<span class="text-red-600">{{.Message}}</span>{{end}}
+{{if .OK}}<span class="text-green-700 dark:text-green-400">{{.Message}}</span>{{else}}<span class="text-red-600 dark:text-red-400">{{.Message}}</span>{{end}}
 {{end}}

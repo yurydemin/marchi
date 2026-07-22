@@ -54,3 +54,16 @@ jobs:
         with:
           go-version-input: "1.25"
           check-latest: true
+
+  css-check:
+    name: css drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # web/static/css/app.css is a checked-in, pre-built Tailwind
+      # bundle (see the Makefile's own comment) — this catches a
+      # template using a utility class nobody rebuilt app.css for,
+      # which otherwise just silently no-ops in the browser.
+      - name: make css-check
+        run: make css-check

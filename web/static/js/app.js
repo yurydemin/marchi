@@ -7,6 +7,51 @@ function csrfToken() {
   return match ? decodeURIComponent(match[1]) : "";
 }
 
+// --- Theme (dark/light) --------------------------------------------------
+//
+// dark: utility classes (web/static/css/input.css's @custom-variant) only
+// apply when .dark is present on <html> — applied here, not via
+// Tailwind's automatic prefers-color-scheme media query, so a user's
+// explicit choice (the nav toggle) can override the system setting.
+// Runs as the very first thing in this file so the flash of the wrong
+// theme is as short as possible; it can't be eliminated outright without
+// an inline <script> in <head>, which the strict script-src 'self' CSP
+// (NFR-SC-05) rules out.
+
+const themeCookieName = "theme";
+
+function getThemeCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)theme=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+function resolveTheme() {
+  const stored = getThemeCookie();
+  if (stored === "dark" || stored === "light") {
+    return stored;
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(theme) {
+  document.documentElement.classList.toggle("dark", theme === "dark");
+  const btn = document.getElementById("theme-toggle");
+  if (btn) {
+    btn.textContent = theme === "dark" ? "Light" : "Dark";
+  }
+}
+
+applyTheme(resolveTheme());
+
+document.addEventListener("click", function (evt) {
+  if (evt.target.id !== "theme-toggle") {
+    return;
+  }
+  const next = document.documentElement.classList.contains("dark") ? "light" : "dark";
+  document.cookie = themeCookieName + "=" + next + "; path=/; max-age=31536000; SameSite=Lax";
+  applyTheme(next);
+});
+
 document.addEventListener("htmx:configRequest", function (evt) {
   evt.detail.headers["X-Csrf-Token"] = csrfToken();
 });

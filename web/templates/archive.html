@@ -3,15 +3,15 @@
 
 <div class="flex flex-col gap-6 lg:flex-row">
   <aside class="w-full shrink-0 lg:w-56">
-    <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <a class="mb-2 block text-sm font-medium {{if and (not .AccountID) (not .FolderID)}}text-slate-900{{else}}text-slate-600 hover:text-slate-900{{end}}" href="/archive">All accounts</a>
+    <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm">
+      <a class="mb-2 block text-sm font-medium {{if and (not .AccountID) (not .FolderID)}}text-slate-900 dark:text-slate-100{{else}}text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100{{end}}" href="/archive">All accounts</a>
       {{range .Accounts}}
       <div class="mt-3">
-        <div class="truncate text-xs font-semibold uppercase tracking-wide text-slate-400" title="{{.Email}}">{{.Email}}</div>
+        <div class="truncate text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500" title="{{.Email}}">{{.Email}}</div>
         <ul class="mt-1 space-y-1">
           {{range .Folders}}
           <li>
-            <a class="block truncate rounded px-1 text-sm hover:bg-slate-50" href="{{.URL}}">{{.Name}}</a>
+            <a class="block truncate rounded px-1 text-sm hover:bg-slate-50 dark:hover:bg-slate-700" href="{{.URL}}">{{.Name}}</a>
           </li>
           {{end}}
         </ul>
@@ -21,49 +21,49 @@
   </aside>
 
   <div class="min-w-0 flex-1">
-    <form method="GET" action="/archive" class="mb-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <form method="GET" action="/archive" class="mb-6 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm">
       {{if .AccountID}}<input type="hidden" name="account_id" value="{{.AccountID}}">{{end}}
       {{if .FolderID}}<input type="hidden" name="folder_id" value="{{.FolderID}}">{{end}}
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div class="sm:col-span-2 lg:col-span-2">
-          <label class="mb-1 block text-xs font-medium text-slate-500" for="q">Search</label>
-          <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="text" id="q" name="q" value="{{.Query}}" placeholder="Subject, body, sender...">
+          <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="q">Search</label>
+          <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="text" id="q" name="q" value="{{.Query}}" placeholder="Subject, body, sender...">
         </div>
         <div>
-          <label class="mb-1 block text-xs font-medium text-slate-500" for="from">From date</label>
-          <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="date" id="from" name="from" value="{{.DateFrom}}">
+          <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="from">From date</label>
+          <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="date" id="from" name="from" value="{{.DateFrom}}">
         </div>
         <div>
-          <label class="mb-1 block text-xs font-medium text-slate-500" for="to">To date</label>
-          <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="date" id="to" name="to" value="{{.DateTo}}">
+          <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="to">To date</label>
+          <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="date" id="to" name="to" value="{{.DateTo}}">
         </div>
         <div>
-          <label class="mb-1 block text-xs font-medium text-slate-500" for="has_attachments">Attachments</label>
-          <select class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" id="has_attachments" name="has_attachments">
+          <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="has_attachments">Attachments</label>
+          <select class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" id="has_attachments" name="has_attachments">
             <option value="" {{if eq .HasAttachments ""}}selected{{end}}>Any</option>
             <option value="true" {{if eq .HasAttachments "true"}}selected{{end}}>With attachments</option>
             <option value="false" {{if eq .HasAttachments "false"}}selected{{end}}>Without attachments</option>
           </select>
         </div>
         <div>
-          <label class="mb-1 block text-xs font-medium text-slate-500" for="sort">Sort</label>
-          <select class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" id="sort" name="sort">
+          <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="sort">Sort</label>
+          <select class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" id="sort" name="sort">
             <option value="relevance" {{if eq .Sort "relevance"}}selected{{end}}>Relevance</option>
             <option value="date_desc" {{if eq .Sort "date_desc"}}selected{{end}}>Newest first</option>
             <option value="date_asc" {{if eq .Sort "date_asc"}}selected{{end}}>Oldest first</option>
           </select>
         </div>
         <div class="flex items-end">
-          <button class="w-full rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700" type="submit">Search</button>
+          <button class="w-full rounded bg-slate-900 dark:bg-slate-100 dark:text-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:hover:bg-slate-300" type="submit">Search</button>
         </div>
       </div>
     </form>
 
     {{if .Results}}
-    <div class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm">
       <div>
-        <label class="mb-1 block text-xs font-medium text-slate-500" for="restore-target-account">Target account</label>
-        <select class="rounded border border-slate-300 px-3 py-2 text-sm" id="restore-target-account">
+        <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="restore-target-account">Target account</label>
+        <select class="rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm" id="restore-target-account">
           <option value="">Select account&hellip;</option>
           {{range .Accounts}}
           <option value="{{.ID}}">{{.Email}}</option>
@@ -71,8 +71,8 @@
         </select>
       </div>
       <div>
-        <label class="mb-1 block text-xs font-medium text-slate-500" for="restore-target-folder">Target folder</label>
-        <select class="rounded border border-slate-300 px-3 py-2 text-sm" id="restore-target-folder" disabled>
+        <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="restore-target-folder">Target folder</label>
+        <select class="rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm" id="restore-target-folder" disabled>
           <option value="">Select account first&hellip;</option>
         </select>
         {{range .Accounts}}
@@ -81,12 +81,12 @@
         </template>
         {{end}}
       </div>
-      <button class="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50" type="button" data-action="trigger-restore" disabled>Restore selected</button>
-      <span class="text-sm text-slate-500" id="restore-status"></span>
+      <button class="rounded bg-slate-900 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-50" type="button" data-action="trigger-restore" disabled>Restore selected</button>
+      <span class="text-sm text-slate-500 dark:text-slate-400" id="restore-status"></span>
     </div>
-    <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-      <table class="min-w-full divide-y divide-slate-200 text-sm">
-        <thead class="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+    <div class="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm">
+      <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700 text-sm">
+        <thead class="bg-slate-50 dark:bg-slate-900 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
           <tr>
             <th class="px-4 py-2"><input type="checkbox" id="restore-select-all"></th>
             <th class="px-4 py-2">Subject</th>
@@ -96,25 +96,25 @@
             <th class="px-4 py-2"></th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-slate-200">
+        <tbody class="divide-y divide-slate-200 dark:divide-slate-700">
           {{range .Results}}
-          <tr class="{{if .Selected}}bg-slate-50{{end}}">
+          <tr class="{{if .Selected}}bg-slate-50 dark:bg-slate-900{{end}}">
             <td class="px-4 py-2"><input type="checkbox" class="restore-checkbox" data-email-id="{{.EmailID}}"></td>
             <td class="max-w-xs truncate px-4 py-2">
-              <a class="font-medium text-slate-900 hover:underline" href="{{.ViewURL}}">{{if .Subject}}{{.Subject}}{{else}}(no subject){{end}}</a>
-              {{if .InS3}}<span class="ml-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600" title="Stored in S3, loaded on demand">S3</span>{{end}}
-              <div class="truncate text-xs text-slate-400">{{.AccountEmail}} &middot; {{.FolderName}}</div>
+              <a class="font-medium text-slate-900 dark:text-slate-100 hover:underline" href="{{.ViewURL}}">{{if .Subject}}{{.Subject}}{{else}}(no subject){{end}}</a>
+              {{if .InS3}}<span class="ml-1 rounded-full bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-300" title="Stored in S3, loaded on demand">S3</span>{{end}}
+              <div class="truncate text-xs text-slate-400 dark:text-slate-500">{{.AccountEmail}} &middot; {{.FolderName}}</div>
             </td>
-            <td class="max-w-[16rem] truncate px-4 py-2 text-slate-600">{{.From}}</td>
-            <td class="whitespace-nowrap px-4 py-2 text-slate-600">{{formatDate .Date}}</td>
-            <td class="whitespace-nowrap px-4 py-2 text-slate-600">{{humanBytes .Size}}</td>
-            <td class="px-4 py-2 text-slate-400">{{if .HasAttachments}}&#128206;{{end}}</td>
+            <td class="max-w-[16rem] truncate px-4 py-2 text-slate-600 dark:text-slate-300">{{.From}}</td>
+            <td class="whitespace-nowrap px-4 py-2 text-slate-600 dark:text-slate-300">{{formatDate .Date}}</td>
+            <td class="whitespace-nowrap px-4 py-2 text-slate-600 dark:text-slate-300">{{humanBytes .Size}}</td>
+            <td class="px-4 py-2 text-slate-400 dark:text-slate-500">{{if .HasAttachments}}&#128206;{{end}}</td>
           </tr>
           {{end}}
         </tbody>
       </table>
     </div>
-    <div class="mt-3 flex items-center justify-between text-sm text-slate-500">
+    <div class="mt-3 flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
       <span>Showing {{add .Offset 1}}&ndash;{{add .Offset (len .Results)}} of {{.Total}}</span>
       <div class="flex gap-3">
         {{if .PrevPageURL}}<a class="hover:underline" href="{{.PrevPageURL}}">&larr; Newer</a>{{end}}
@@ -122,56 +122,56 @@
       </div>
     </div>
     {{else}}
-    <div class="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+    <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 text-sm text-slate-500 dark:text-slate-400 shadow-sm">
       No emails match this search.
     </div>
     {{end}}
 
     {{if .Viewer}}
-    <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <div class="mt-6 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm">
       <div class="mb-4 flex items-start justify-between gap-4">
         <div class="min-w-0">
           <h2 class="truncate text-lg font-semibold">
             {{if .Viewer.Subject}}{{.Viewer.Subject}}{{else}}(no subject){{end}}
-            {{if .Viewer.InS3}}<span class="ml-1 rounded-full bg-slate-100 px-1.5 py-0.5 align-middle text-xs font-medium text-slate-600" title="Stored in S3, loaded on demand">S3</span>{{end}}
+            {{if .Viewer.InS3}}<span class="ml-1 rounded-full bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 align-middle text-xs font-medium text-slate-600 dark:text-slate-300" title="Stored in S3, loaded on demand">S3</span>{{end}}
           </h2>
-          <dl class="mt-1 text-sm text-slate-500">
-            <div><span class="font-medium text-slate-600">From:</span> {{.Viewer.From}}</div>
-            {{if .Viewer.To}}<div><span class="font-medium text-slate-600">To:</span> {{range $i, $v := .Viewer.To}}{{if $i}}, {{end}}{{$v}}{{end}}</div>{{end}}
-            {{if .Viewer.Cc}}<div><span class="font-medium text-slate-600">Cc:</span> {{range $i, $v := .Viewer.Cc}}{{if $i}}, {{end}}{{$v}}{{end}}</div>{{end}}
-            <div><span class="font-medium text-slate-600">Date:</span> {{formatDate .Viewer.Date}}</div>
+          <dl class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <div><span class="font-medium text-slate-600 dark:text-slate-300">From:</span> {{.Viewer.From}}</div>
+            {{if .Viewer.To}}<div><span class="font-medium text-slate-600 dark:text-slate-300">To:</span> {{range $i, $v := .Viewer.To}}{{if $i}}, {{end}}{{$v}}{{end}}</div>{{end}}
+            {{if .Viewer.Cc}}<div><span class="font-medium text-slate-600 dark:text-slate-300">Cc:</span> {{range $i, $v := .Viewer.Cc}}{{if $i}}, {{end}}{{$v}}{{end}}</div>{{end}}
+            <div><span class="font-medium text-slate-600 dark:text-slate-300">Date:</span> {{formatDate .Viewer.Date}}</div>
           </dl>
         </div>
         <div class="flex shrink-0 items-center gap-3 text-sm">
           {{if .Viewer.PrevURL}}<a class="hover:underline" href="{{.Viewer.PrevURL}}">&larr; Prev</a>{{end}}
           {{if .Viewer.NextURL}}<a class="hover:underline" href="{{.Viewer.NextURL}}">Next &rarr;</a>{{end}}
-          <a class="rounded border border-slate-300 px-3 py-1.5 font-medium text-slate-600 hover:bg-slate-50" href="{{.Viewer.DownloadURL}}">Download .eml</a>
+          <a class="rounded border border-slate-300 dark:border-slate-600 px-3 py-1.5 font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700" href="{{.Viewer.DownloadURL}}">Download .eml</a>
         </div>
       </div>
 
       {{if .Viewer.Attachments}}
       <div class="mb-4 flex flex-wrap gap-2">
         {{range .Viewer.Attachments}}
-        <a class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50" href="{{.DownloadURL}}">{{.Filename}} ({{humanBytes .Size}})</a>
+        <a class="rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700" href="{{.DownloadURL}}">{{.Filename}} ({{humanBytes .Size}})</a>
         {{end}}
       </div>
       {{end}}
 
-      <div class="border-t border-slate-200 pt-4">
+      <div class="border-t border-slate-200 dark:border-slate-700 pt-4">
         {{if .Viewer.BodyHTML}}
-        <div class="max-w-none overflow-x-auto text-sm text-slate-800">{{.Viewer.BodyHTML}}</div>
+        <div class="max-w-none overflow-x-auto text-sm text-slate-800 dark:text-slate-200">{{.Viewer.BodyHTML}}</div>
         {{else if .Viewer.BodyText}}
         <pre class="whitespace-pre-wrap font-sans text-sm">{{.Viewer.BodyText}}</pre>
         {{else}}
-        <p class="text-sm text-slate-400">No preview available for this message.</p>
+        <p class="text-sm text-slate-400 dark:text-slate-500">No preview available for this message.</p>
         {{end}}
       </div>
 
       {{if .Viewer.RestoreLogs}}
-      <div class="mt-4 border-t border-slate-200 pt-4">
-        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Restore history</h3>
-        <table class="min-w-full divide-y divide-slate-200 text-sm">
-          <thead class="text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+      <div class="mt-4 border-t border-slate-200 dark:border-slate-700 pt-4">
+        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Restore history</h3>
+        <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700 text-sm">
+          <thead class="text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
             <tr>
               <th class="py-1 pr-4">Target</th>
               <th class="py-1 pr-4">Method</th>
@@ -179,13 +179,13 @@
               <th class="py-1 pr-4">When</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-200">
+          <tbody class="divide-y divide-slate-200 dark:divide-slate-700">
             {{range .Viewer.RestoreLogs}}
             <tr>
-              <td class="py-1 pr-4 text-slate-600">{{.TargetAccountEmail}} &middot; {{.TargetFolder}}</td>
-              <td class="py-1 pr-4 text-slate-600">{{.Method}}</td>
-              <td class="py-1 pr-4 {{if eq .Status "completed"}}text-green-700{{else}}text-red-600{{end}}">{{.Status}}{{if .ErrorMsg}}: {{.ErrorMsg}}{{end}}</td>
-              <td class="py-1 pr-4 text-slate-400">{{formatDate .CreatedAt}}</td>
+              <td class="py-1 pr-4 text-slate-600 dark:text-slate-300">{{.TargetAccountEmail}} &middot; {{.TargetFolder}}</td>
+              <td class="py-1 pr-4 text-slate-600 dark:text-slate-300">{{.Method}}</td>
+              <td class="py-1 pr-4 {{if eq .Status "completed"}}text-green-700 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">{{.Status}}{{if .ErrorMsg}}: {{.ErrorMsg}}{{end}}</td>
+              <td class="py-1 pr-4 text-slate-400 dark:text-slate-500">{{formatDate .CreatedAt}}</td>
             </tr>
             {{end}}
           </tbody>

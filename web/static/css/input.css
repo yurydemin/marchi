@@ -1,2 +1,9 @@
 @import "tailwindcss";
 @source "../../templates/**/*.html";
+
+/* Manual dark mode: dark: applies only when .dark is on <html> (set by
+   app.js, defaulting to prefers-color-scheme and overridable by the nav
+   toggle) — not Tailwind's default automatic prefers-color-scheme
+   media query, since that would leave no way for a user to override the
+   system setting. */
+@custom-variant dark (&:where(.dark, .dark *));

@@ -8,6 +8,9 @@
 # Go
 /vendor/
 
+# Downloaded standalone Tailwind CLI (make css) — not committed, versioned via Makefile
+/.tools/
+
 # Runtime data (Maildir, SQLite, Bluge index, cache, logs, Master Key salt/verifier)
 /data/
 *.db

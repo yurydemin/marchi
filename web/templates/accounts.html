@@ -1,16 +1,16 @@
 {{define "content"}}
 <h1 class="mb-6 text-xl font-semibold">Accounts</h1>
 
-<div class="mb-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">Add account</h2>
-  <div id="account-form-error" class="mb-3 text-sm text-red-600" role="alert"></div>
+<div class="mb-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm">
+  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Add account</h2>
+  <div id="account-form-error" class="mb-3 text-sm text-red-600 dark:text-red-400" role="alert"></div>
   {{template "add-account-form" .}}
 </div>
 
-<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Accounts</h2>
-<div class="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-  <table class="min-w-full divide-y divide-slate-200 text-sm">
-    <thead class="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Accounts</h2>
+<div class="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm">
+  <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700 text-sm">
+    <thead class="bg-slate-50 dark:bg-slate-900 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
       <tr>
         <th class="px-4 py-2">Account</th>
         <th class="px-4 py-2">Server</th>
@@ -19,7 +19,7 @@
         <th class="px-4 py-2 text-right">Actions</th>
       </tr>
     </thead>
-    <tbody id="accounts-tbody" class="divide-y divide-slate-200">
+    <tbody id="accounts-tbody" class="divide-y divide-slate-200 dark:divide-slate-700">
       {{template "account-rows" .Accounts}}
     </tbody>
   </table>
@@ -39,7 +39,7 @@ new <tr> landed outside any <table>, which browsers silently mangle.
 {{if .}}
 {{range .}}{{template "account-row" .}}{{end}}
 {{else}}
-<tr><td colspan="5" class="px-4 py-6 text-center text-slate-500">No accounts yet. Add one above to get started.</td></tr>
+<tr><td colspan="5" class="px-4 py-6 text-center text-slate-500 dark:text-slate-400">No accounts yet. Add one above to get started.</td></tr>
 {{end}}
 {{end}}
 
@@ -57,23 +57,23 @@ htmx:afterRequest listener for #add-account-form).
   <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
     <div>
       <label class="mb-1 block text-sm font-medium" for="email">Email</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="email" id="email" name="email" required>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="email" id="email" name="email" required>
     </div>
     <div>
       <label class="mb-1 block text-sm font-medium" for="display_name">Display name</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="text" id="display_name" name="display_name">
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="text" id="display_name" name="display_name">
     </div>
     <div>
       <label class="mb-1 block text-sm font-medium" for="imap_host">IMAP host</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="text" id="imap_host" name="imap_host" required>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="text" id="imap_host" name="imap_host" required>
     </div>
     <div>
       <label class="mb-1 block text-sm font-medium" for="imap_port">IMAP port</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="number" id="imap_port" name="imap_port" placeholder="993 (default for SSL/TLS)">
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="number" id="imap_port" name="imap_port" placeholder="993 (default for SSL/TLS)">
     </div>
     <div>
       <label class="mb-1 block text-sm font-medium" for="imap_tls">TLS</label>
-      <select class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" id="imap_tls" name="imap_tls">
+      <select class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" id="imap_tls" name="imap_tls">
         <option value="ssl">SSL/TLS</option>
         <option value="starttls">STARTTLS</option>
         <option value="none">None</option>
@@ -81,35 +81,35 @@ htmx:afterRequest listener for #add-account-form).
     </div>
     <div>
       <label class="mb-1 block text-sm font-medium" for="imap_username">IMAP username</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="text" id="imap_username" name="imap_username" placeholder="defaults to email">
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="text" id="imap_username" name="imap_username" placeholder="defaults to email">
     </div>
     <div class="sm:col-span-2">
       <label class="mb-1 block text-sm font-medium" for="imap_password">IMAP password</label>
-      <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" type="password" id="imap_password" name="imap_password" required>
+      <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none" type="password" id="imap_password" name="imap_password" required>
     </div>
   </div>
-  <button class="mt-4 rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700" type="submit">Add account</button>
+  <button class="mt-4 rounded bg-slate-900 dark:bg-slate-100 dark:text-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 dark:hover:bg-slate-300" type="submit">Add account</button>
 </form>
 {{end}}
 
 {{define "account-row"}}
 <tr id="account-row-{{.ID}}">
   <td class="px-4 py-2">{{.Email}}</td>
-  <td class="px-4 py-2 text-xs text-slate-500">{{.IMAPHost}}:{{.IMAPPort}} ({{.IMAPTLS}})</td>
+  <td class="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{{.IMAPHost}}:{{.IMAPPort}} ({{.IMAPTLS}})</td>
   <td class="px-4 py-2">
     <button
-      class="rounded-full px-2 py-0.5 text-xs font-medium {{if .IsActive}}bg-green-100 text-green-700{{else}}bg-slate-100 text-slate-500{{end}}"
+      class="rounded-full px-2 py-0.5 text-xs font-medium {{if .IsActive}}bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-400{{else}}bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400{{end}}"
       hx-put="/accounts/{{.ID}}/toggle" hx-target="#accounts-tbody" hx-swap="innerHTML">
       {{if .IsActive}}active{{else}}paused{{end}}
     </button>
   </td>
   <td class="px-4 py-2">
-    <button class="text-slate-600 hover:text-slate-900" hx-post="/accounts/{{.ID}}/test" hx-target="#test-result-{{.ID}}" hx-swap="innerHTML">Test</button>
+    <button class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100" hx-post="/accounts/{{.ID}}/test" hx-target="#test-result-{{.ID}}" hx-swap="innerHTML">Test</button>
     <span id="test-result-{{.ID}}" class="ml-2 text-xs"></span>
   </td>
   <td class="px-4 py-2 text-right">
-    <button class="text-slate-600 hover:text-slate-900" hx-get="/accounts/{{.ID}}/edit" hx-target="#account-row-{{.ID}}" hx-swap="outerHTML">Edit</button>
-    <button class="ml-2 text-red-600 hover:text-red-800" hx-delete="/accounts/{{.ID}}" hx-target="#accounts-tbody" hx-swap="innerHTML" hx-confirm="Delete this account and all its archived emails?">Delete</button>
+    <button class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100" hx-get="/accounts/{{.ID}}/edit" hx-target="#account-row-{{.ID}}" hx-swap="outerHTML">Edit</button>
+    <button class="ml-2 text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-400" hx-delete="/accounts/{{.ID}}" hx-target="#accounts-tbody" hx-swap="innerHTML" hx-confirm="Delete this account and all its archived emails?">Delete</button>
   </td>
 </tr>
 {{end}}
@@ -119,36 +119,36 @@ htmx:afterRequest listener for #add-account-form).
   <td colspan="5" class="px-4 py-3">
     <form hx-put="/accounts/{{.ID}}" hx-target="#accounts-tbody" hx-swap="innerHTML" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <div>
-        <label class="mb-1 block text-xs font-medium text-slate-500" for="edit-display_name-{{.ID}}">Display name</label>
-        <input class="w-full rounded border border-slate-300 px-2 py-1 text-sm" type="text" id="edit-display_name-{{.ID}}" name="display_name" value="{{.DisplayName}}">
+        <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="edit-display_name-{{.ID}}">Display name</label>
+        <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-sm" type="text" id="edit-display_name-{{.ID}}" name="display_name" value="{{.DisplayName}}">
       </div>
       <div>
-        <label class="mb-1 block text-xs font-medium text-slate-500" for="edit-imap_host-{{.ID}}">IMAP host</label>
-        <input class="w-full rounded border border-slate-300 px-2 py-1 text-sm" type="text" id="edit-imap_host-{{.ID}}" name="imap_host" value="{{.IMAPHost}}" required>
+        <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="edit-imap_host-{{.ID}}">IMAP host</label>
+        <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-sm" type="text" id="edit-imap_host-{{.ID}}" name="imap_host" value="{{.IMAPHost}}" required>
       </div>
       <div>
-        <label class="mb-1 block text-xs font-medium text-slate-500" for="edit-imap_port-{{.ID}}">IMAP port</label>
-        <input class="w-full rounded border border-slate-300 px-2 py-1 text-sm" type="number" id="edit-imap_port-{{.ID}}" name="imap_port" value="{{.IMAPPort}}">
+        <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="edit-imap_port-{{.ID}}">IMAP port</label>
+        <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-sm" type="number" id="edit-imap_port-{{.ID}}" name="imap_port" value="{{.IMAPPort}}">
       </div>
       <div>
-        <label class="mb-1 block text-xs font-medium text-slate-500" for="edit-imap_tls-{{.ID}}">TLS</label>
-        <select class="w-full rounded border border-slate-300 px-2 py-1 text-sm" id="edit-imap_tls-{{.ID}}" name="imap_tls">
+        <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="edit-imap_tls-{{.ID}}">TLS</label>
+        <select class="w-full rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-sm" id="edit-imap_tls-{{.ID}}" name="imap_tls">
           <option value="ssl" {{if eq .IMAPTLS "ssl"}}selected{{end}}>SSL/TLS</option>
           <option value="starttls" {{if eq .IMAPTLS "starttls"}}selected{{end}}>STARTTLS</option>
           <option value="none" {{if eq .IMAPTLS "none"}}selected{{end}}>None</option>
         </select>
       </div>
       <div>
-        <label class="mb-1 block text-xs font-medium text-slate-500" for="edit-imap_username-{{.ID}}">IMAP username</label>
-        <input class="w-full rounded border border-slate-300 px-2 py-1 text-sm" type="text" id="edit-imap_username-{{.ID}}" name="imap_username" value="{{.IMAPUsername}}">
+        <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="edit-imap_username-{{.ID}}">IMAP username</label>
+        <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-sm" type="text" id="edit-imap_username-{{.ID}}" name="imap_username" value="{{.IMAPUsername}}">
       </div>
       <div>
-        <label class="mb-1 block text-xs font-medium text-slate-500" for="edit-imap_password-{{.ID}}">New password</label>
-        <input class="w-full rounded border border-slate-300 px-2 py-1 text-sm" type="password" id="edit-imap_password-{{.ID}}" name="imap_password" placeholder="leave blank to keep current">
+        <label class="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400" for="edit-imap_password-{{.ID}}">New password</label>
+        <input class="w-full rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-sm" type="password" id="edit-imap_password-{{.ID}}" name="imap_password" placeholder="leave blank to keep current">
       </div>
       <div class="flex items-end gap-2 sm:col-span-2">
-        <button class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700" type="submit">Save</button>
-        <button class="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50" type="button" hx-get="/accounts/{{.ID}}" hx-target="#account-row-{{.ID}}" hx-swap="outerHTML">Cancel</button>
+        <button class="rounded bg-slate-900 dark:bg-slate-100 dark:text-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 dark:hover:bg-slate-300" type="submit">Save</button>
+        <button class="rounded border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700" type="button" hx-get="/accounts/{{.ID}}" hx-target="#account-row-{{.ID}}" hx-swap="outerHTML">Cancel</button>
       </div>
     </form>
   </td>
@@ -156,5 +156,5 @@ htmx:afterRequest listener for #add-account-form).
 {{end}}
 
 {{define "test-result"}}
-{{if .OK}}<span class="text-green-700">OK &middot; {{.FolderCount}} folder(s)</span>{{else}}<span class="text-red-600">{{.Error}}</span>{{end}}
+{{if .OK}}<span class="text-green-700 dark:text-green-400">OK &middot; {{.FolderCount}} folder(s)</span>{{else}}<span class="text-red-600 dark:text-red-400">{{.Error}}</span>{{end}}
 {{end}}
