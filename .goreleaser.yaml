@@ -42,15 +42,22 @@ archives:
 checksum:
   name_template: checksums.txt
 
+# Disabled rather than filtered: a raw per-commit list (even filtered)
+# reads as noise on the release page next to the hand-written summary
+# release.footer below points readers to instead. CHANGELOG.md in the
+# repo remains the actual maintained changelog.
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^Merge "
+  disable: true
 
 release:
   github:
     owner: yurydemin
     name: marchi
+  # The summary paragraph above this footer is NOT templated here — write
+  # it by hand before tagging (e.g. `gh release edit <tag> --notes-file
+  # ...`, prepending this footer's rendered form, or just editing the
+  # published release once goreleaser creates it). `{{.PreviousTag}}` is
+  # empty for a repo's first-ever release; the v0.1.0 release footer was
+  # written by hand for that reason instead of coming from this template.
+  footer: |
+    Полный список изменений: https://github.com/yurydemin/marchi/compare/{{.PreviousTag}}...{{.Tag}}
