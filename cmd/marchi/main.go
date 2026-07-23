@@ -128,6 +128,7 @@ func newRootCmd(loc *i18n.Localizer) *cobra.Command {
 				Dir:    cfg.LogsDir(),
 				Level:  cfg.App.LogLevel,
 				Format: cfg.App.LogFormat,
+				Output: cfg.App.LogOutput,
 			})
 			if err != nil {
 				return fmt.Errorf("initializing logging: %w", err)

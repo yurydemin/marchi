@@ -26,6 +26,10 @@ type AppConfig struct {
 	DataDir   string `yaml:"data_dir"`
 	LogLevel  string `yaml:"log_level"`
 	LogFormat string `yaml:"log_format"`
+	// LogOutput is "file", "stdout", or "both" (default) — see
+	// internal/logging.Options.Output's doc comment for why both sinks
+	// are on by default rather than file-only.
+	LogOutput string `yaml:"log_output"`
 }
 
 type HTTPConfig struct {
@@ -111,6 +115,7 @@ func Defaults(dataDir string) *Config {
 			DataDir:   dataDir,
 			LogLevel:  "info",
 			LogFormat: "json",
+			LogOutput: "both",
 		},
 		HTTP: HTTPConfig{
 			Host: "127.0.0.1",
@@ -179,6 +184,10 @@ var envOverrides = []struct {
 	}},
 	{"MARCHI_LOG_LEVEL", func(c *Config, v string) error {
 		c.App.LogLevel = v
+		return nil
+	}},
+	{"MARCHI_LOG_OUTPUT", func(c *Config, v string) error {
+		c.App.LogOutput = v
 		return nil
 	}},
 }
@@ -252,6 +261,11 @@ func (c *Config) validate() error {
 	}
 	if c.HTTP.Port < 1 || c.HTTP.Port > 65535 {
 		return fmt.Errorf("http.port must be between 1 and 65535, got %d", c.HTTP.Port)
+	}
+	switch c.App.LogOutput {
+	case "file", "stdout", "both":
+	default:
+		return fmt.Errorf(`app.log_output must be "file", "stdout", or "both", got %q`, c.App.LogOutput)
 	}
 	return nil
 }

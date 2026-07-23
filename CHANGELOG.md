@@ -63,6 +63,9 @@
   подтверждено живьём против реального systemd.
 - Docker-образ на базе distroless (non-root, ~45 МБ) + `docker-compose.yml` с опциональным
   MinIO-профилем для локального теста S3.
+- Логирование одновременно в файл (`{data_dir}/logs`, ротация NFR-RL-04) и в stdout по
+  умолчанию (`app.log_output`) — `docker logs`/`journalctl -u marchi` показывают логи без
+  дополнительной настройки, `marchi logs` продолжает работать поверх файла.
 - Prometheus-метрики (`/metrics`): письма, аккаунты, синхронизации, очередь S3,
   HTTP-latency.
 - Релизная автоматизация (goreleaser) — бинарники `linux/amd64` и `linux/arm64`.

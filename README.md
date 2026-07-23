@@ -119,6 +119,7 @@ sudo systemctl enable --now marchi
 | `http.host` / `http.port` | `127.0.0.1` / `8080` | Адрес Web UI. В Docker нужно `0.0.0.0`, иначе порт не будет доступен снаружи контейнера |
 | `http.tls.enabled` / `auto_cert` | `true` / `true` | Самоподписанный TLS, генерируется в `{data_dir}/tls` |
 | `security.master_key_env` | `MARCHI_MASTER_KEY` | Имя переменной окружения для unattended-разблокировки |
+| `app.log_output` | `both` | Куда пишутся логи: `file` (только `{data_dir}/logs`), `stdout` (только консоль — физически stderr, чтобы не засорять stdout вывод команд вроде `config show`; виден в `docker logs`/`journalctl -u marchi`), `both` |
 | `sync.default_schedule` | `0 */6 * * *` | Cron-расписание автосинхронизации по умолчанию (переопределяется на уровне аккаунта) |
 | `storage.cache.max_size_gb` | `10` | Лимит byte-budget LRU-кэша для ленивой загрузки писем из S3 |
 

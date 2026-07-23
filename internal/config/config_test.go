@@ -20,6 +20,9 @@ func TestLoad_ZeroConfig_NoFile(t *testing.T) {
 	if cfg.Database.SQLite.Path != filepath.Join("./data", "marchi.db") {
 		t.Errorf("SQLite path = %q", cfg.Database.SQLite.Path)
 	}
+	if cfg.App.LogOutput != "both" {
+		t.Errorf("LogOutput = %q, want default \"both\"", cfg.App.LogOutput)
+	}
 }
 
 func TestLoad_YAMLOverridesDefaults(t *testing.T) {
@@ -173,6 +176,24 @@ http:
 	}
 	if cfg.App.LogLevel != "warn" {
 		t.Errorf("LogLevel = %q, want env override warn", cfg.App.LogLevel)
+	}
+}
+
+func TestLoad_LogOutputEnvOverride(t *testing.T) {
+	t.Setenv("MARCHI_LOG_OUTPUT", "stdout")
+	cfg, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.App.LogOutput != "stdout" {
+		t.Errorf("LogOutput = %q, want env override stdout", cfg.App.LogOutput)
+	}
+}
+
+func TestLoad_InvalidLogOutput(t *testing.T) {
+	t.Setenv("MARCHI_LOG_OUTPUT", "syslog")
+	if _, err := Load(filepath.Join(t.TempDir(), "missing.yaml")); err == nil {
+		t.Fatal("expected validation error for invalid app.log_output, got nil")
 	}
 }
 
