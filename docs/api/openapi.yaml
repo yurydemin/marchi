@@ -1,0 +1,1076 @@
+openapi: 3.0.3
+info:
+  title: Marchi API
+  description: |
+    JSON REST API for Marchi, a self-hosted email archiving service.
+
+    All `/api/v1/*` endpoints (and `GET /ws`) require an authenticated browser
+    session: `POST /unlock` with the Master Key password first, which sets a
+    session cookie. Requests without a valid session receive `401`.
+
+    State-changing requests (`POST`/`PUT`/`DELETE`) additionally require a
+    CSRF token, issued as a `csrf_` cookie on any prior `GET` and echoed back
+    via the `X-Csrf-Token` header.
+
+    Error responses across the whole API are **plain text**, not JSON: the
+    body is the raw error message, `Content-Type: text/plain; charset=utf-8`.
+    This document models that as the `PlainTextError` response used on every
+    non-2xx response.
+  version: "0.1.0"
+  license:
+    name: MIT
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+
+tags:
+  - name: Accounts
+  - name: Emails
+  - name: Rules
+  - name: S3 Settings
+  - name: OAuth2 Settings
+  - name: Settings
+  - name: Restore
+  - name: Export
+  - name: Search
+  - name: Stats
+  - name: Logs
+  - name: Admin
+  - name: Unlock
+    description: The one endpoint reachable without a session (outside `/api/v1`).
+
+paths:
+  /accounts:
+    get:
+      tags: [Accounts]
+      summary: List all IMAP accounts
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Account" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    post:
+      tags: [Accounts]
+      summary: Add a password-authenticated IMAP account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAccountRequest" }
+          application/x-www-form-urlencoded:
+            schema: { $ref: "#/components/schemas/CreateAccountRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409":
+          description: An account with this email already exists
+          content: { text/plain: { schema: { type: string } } }
+
+  /accounts/oauth2:
+    post:
+      tags: [Accounts]
+      summary: Add an OAuth2-authenticated IMAP account
+      description: >-
+        Stores an access/refresh token pair that was already obtained
+        elsewhere (e.g. via the provider's own OAuth consent flow driven by
+        the caller) — this endpoint does not perform the authorization-code
+        exchange itself.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateOAuth2AccountRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409":
+          description: An account with this email already exists
+          content: { text/plain: { schema: { type: string } } }
+
+  /accounts/{id}:
+    put:
+      tags: [Accounts]
+      summary: Update an account
+      parameters: [{ $ref: "#/components/parameters/AccountID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAccountRequest" }
+          application/x-www-form-urlencoded:
+            schema: { $ref: "#/components/schemas/UpdateAccountRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Accounts]
+      summary: Delete an account
+      description: >-
+        Cascades: search-index documents for the account's emails are
+        removed best-effort, the DB row is deleted (cascading to
+        folders/emails/attachments/sync_logs via foreign keys), then the
+        account's Maildir directory is removed from disk.
+      parameters: [{ $ref: "#/components/parameters/AccountID" }]
+      responses:
+        "204": { description: Deleted }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /accounts/{id}/test:
+    post:
+      tags: [Accounts]
+      summary: Test an account's saved IMAP connectivity
+      description: >-
+        Decrypts the stored password, connects, and lists folders. A failed
+        *connection* is still an HTTP 200 with `ok: false` — only request
+        validation and lookup failures produce a non-2xx status.
+      parameters: [{ $ref: "#/components/parameters/AccountID" }]
+      responses:
+        "200":
+          description: Test result (success or connection failure)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      ok: { type: boolean, enum: [true] }
+                      folder_count: { type: integer }
+                    required: [ok, folder_count]
+                  - type: object
+                    properties:
+                      ok: { type: boolean, enum: [false] }
+                      error: { type: string }
+                    required: [ok, error]
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /accounts/{id}/sync:
+    post:
+      tags: [Accounts]
+      summary: Trigger a manual sync
+      description: >-
+        Runs asynchronously on the Scheduler's worker pool. Subscribe to
+        `GET /ws` for progress (`type: "sync"` events carrying this `job_id`).
+      parameters: [{ $ref: "#/components/parameters/AccountID" }]
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobIDResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /accounts/{id}/folders:
+    get:
+      tags: [Accounts]
+      summary: List an account's tracked IMAP folders
+      parameters: [{ $ref: "#/components/parameters/AccountID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Folder" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /accounts/{id}/sync-status:
+    get:
+      tags: [Accounts]
+      summary: Recent sync run history for one account
+      parameters:
+        - { $ref: "#/components/parameters/AccountID" }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+          description: Invalid/non-positive values silently fall back to 20 (no 400).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SyncLog" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /emails/{id}:
+    get:
+      tags: [Emails]
+      summary: Email metadata, sanitized body preview, and attachment list
+      description: >-
+        Best-effort body loading: if content can't be loaded (e.g. S3
+        lazy-load failure), metadata/attachments are still returned with
+        empty `body_html`/`body_text`. `body_html` is sanitized (bluemonday
+        allowlist — scripts, event handlers, images, and `data:` URIs are
+        stripped) and safe to render directly.
+      parameters: [{ $ref: "#/components/parameters/EmailID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Email" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /emails/{id}/download:
+    get:
+      tags: [Emails]
+      summary: Download the original .eml file
+      parameters: [{ $ref: "#/components/parameters/EmailID" }]
+      responses:
+        "200":
+          description: The raw RFC 822 message
+          content:
+            message/rfc822:
+              schema: { type: string, format: binary }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /emails/{id}/attachments/{att_id}/download:
+    get:
+      tags: [Emails]
+      summary: Download one attachment
+      description: >-
+        Attachments are never stored separately — the file is re-extracted
+        from the parent .eml by its positional index each time.
+      parameters:
+        - { $ref: "#/components/parameters/EmailID" }
+        - name: att_id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: The attachment's raw bytes
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404":
+          description: >-
+            Attachment or email not found — also returned (deliberately, to
+            avoid leaking cross-email existence) if the attachment exists
+            but belongs to a different email than {id}.
+          content: { text/plain: { schema: { type: string } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /emails/{id}/restore-logs:
+    get:
+      tags: [Restore]
+      summary: Restore history for one email, newest first
+      parameters: [{ $ref: "#/components/parameters/EmailID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RestoreLog" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /rules:
+    get:
+      tags: [Rules]
+      summary: List all rules
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Rule" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    post:
+      tags: [Rules]
+      summary: Create a rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RuleRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rule" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /rules/{id}:
+    put:
+      tags: [Rules]
+      summary: Replace a rule
+      parameters: [{ $ref: "#/components/parameters/RuleID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RuleRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rule" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    delete:
+      tags: [Rules]
+      summary: Delete a rule
+      parameters: [{ $ref: "#/components/parameters/RuleID" }]
+      responses:
+        "204": { description: Deleted }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /s3/settings:
+    get:
+      tags: [S3 Settings]
+      summary: Get S3 settings
+      description: Encrypted key material is never returned — only a `credentials_configured` flag.
+      responses:
+        "200":
+          description: OK (either shape, both HTTP 200)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties: { configured: { type: boolean, enum: [false] } }
+                  - type: object
+                    properties:
+                      configured: { type: boolean, enum: [true] }
+                      settings: { $ref: "#/components/schemas/S3Settings" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    put:
+      tags: [S3 Settings]
+      summary: Create or update S3 settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveS3SettingsRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/S3Settings" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /s3/settings/test:
+    post:
+      tags: [S3 Settings]
+      summary: Test connectivity of the currently saved S3 settings
+      description: >-
+        Reachability check only (HeadBucket-equivalent) — never creates a
+        bucket. Uses the settings already on disk, not a request body.
+      responses:
+        "200":
+          description: Test result (success or connection failure, both HTTP 200)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties: { ok: { type: boolean, enum: [true] } }
+                  - type: object
+                    properties:
+                      ok: { type: boolean, enum: [false] }
+                      error: { type: string }
+        "400":
+          description: S3 is not configured yet
+          content: { text/plain: { schema: { type: string } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /oauth2/apps:
+    get:
+      tags: [OAuth2 Settings]
+      summary: List configured OAuth2 provider apps
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/OAuth2App" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /oauth2/apps/{provider}:
+    put:
+      tags: [OAuth2 Settings]
+      summary: Create or update one provider's OAuth2 app credentials
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, example: google }
+          description: Taken verbatim from the path, e.g. "google" or "microsoft".
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveOAuth2AppRequest" }
+          application/x-www-form-urlencoded:
+            schema: { $ref: "#/components/schemas/SaveOAuth2AppRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OAuth2App" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /retention/settings:
+    get:
+      tags: [Settings]
+      summary: Get global retention defaults
+      responses:
+        "200":
+          description: OK (either shape, both HTTP 200)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties: { configured: { type: boolean, enum: [false] } }
+                  - type: object
+                    properties:
+                      configured: { type: boolean, enum: [true] }
+                      settings: { $ref: "#/components/schemas/RetentionSettings" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    put:
+      tags: [Settings]
+      summary: Upsert global retention defaults
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RetentionSettings" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RetentionSettings" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /master-key/change:
+    post:
+      tags: [Settings]
+      summary: Rotate the Master Key password
+      description: >-
+        Re-wraps the Data Encryption Key on disk under the new password.
+        Nothing already encrypted with the DEK (IMAP passwords, OAuth2
+        tokens, S3 credentials, S3-uploaded emails) needs re-encrypting.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChangeMasterKeyRequest" }
+          application/x-www-form-urlencoded:
+            schema: { $ref: "#/components/schemas/ChangeMasterKeyRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { status: { type: string, enum: [changed] } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401":
+          description: Current password is incorrect
+          content: { text/plain: { schema: { type: string } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /restore:
+    post:
+      tags: [Restore]
+      summary: Restore archived emails into a target account/folder
+      description: >-
+        Validated synchronously; the actual restore(s) run as a background
+        job. Subscribe to `GET /ws` for progress (`type: "restore"` events
+        carrying `succeeded`/`failed` counts).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RestoreRequest" }
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobIDResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404":
+          description: Target account not found
+          content: { text/plain: { schema: { type: string } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /export:
+    post:
+      tags: [Export]
+      summary: Export archived emails as a .zip of their original .eml files
+      description: >-
+        Streams a zip synchronously as the response body — this is not a
+        background job with a polled result, though progress is still
+        broadcast over `GET /ws` (`type: "export"`) while it streams.
+        Either `email_ids` or `query` must resolve at least one email;
+        `query`-based export is capped at 5000 results.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExportRequest" }
+      responses:
+        "200":
+          description: The zip archive
+          headers:
+            X-Job-Id:
+              schema: { type: string }
+              description: Correlates with `GET /ws` progress events for this export.
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /search:
+    get:
+      tags: [Search]
+      summary: Full-text and metadata search over the archive
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Free-text query.
+        - name: sender
+          in: query
+          schema: { type: string }
+        - name: recipient
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string }
+          description: RFC3339 or YYYY-MM-DD.
+        - name: to
+          in: query
+          schema: { type: string }
+          description: RFC3339 or YYYY-MM-DD.
+        - name: account_id
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: folder_id
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: has_attachments
+          in: query
+          schema: { type: boolean }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [relevance, date_asc, date_desc], default: relevance }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "503":
+          description: Vault is locked
+          content: { text/plain: { schema: { type: string } } }
+
+  /stats:
+    get:
+      tags: [Stats]
+      summary: Archive-wide summary (Dashboard data source)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Stats" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /logs/sync:
+    get:
+      tags: [Logs]
+      summary: Paginated sync log feed across all accounts
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 200 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncLogsPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /admin/reindex:
+    post:
+      tags: [Admin]
+      summary: Rebuild the full-text search index
+      description: >-
+        Live rebuild against the running server, without pausing the
+        Scheduler. Subscribe to `GET /ws` for progress (`type: "reindex"`).
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobIDResponse" }
+        "503":
+          description: Vault is locked
+          content: { text/plain: { schema: { type: string } } }
+
+  /unlock:
+    post:
+      tags: [Unlock]
+      summary: Unlock the vault and start a browser session
+      description: >-
+        The only endpoint reachable without a session. Verifies the Master
+        Key password (bootstrapping the vault on first run), unlocks it
+        process-wide, and sets a session cookie for this browser. Rate
+        limited to 100 requests/minute.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UnlockRequest" }
+          application/x-www-form-urlencoded:
+            schema: { $ref: "#/components/schemas/UnlockRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { status: { type: string, enum: [unlocked] } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401":
+          description: Incorrect password
+          content: { text/plain: { schema: { type: string } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session_id
+      description: Set by `POST /unlock`. State-changing requests also need the `X-Csrf-Token` header (value from the `csrf_` cookie).
+
+  parameters:
+    AccountID:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    EmailID:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    RuleID:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+
+  responses:
+    BadRequest:
+      description: Invalid request (bad path param, malformed body, or a validation error)
+      content: { text/plain: { schema: { type: string } } }
+    NotFound:
+      description: Not found
+      content: { text/plain: { schema: { type: string } } }
+    ServerError:
+      description: Internal server error
+      content: { text/plain: { schema: { type: string } } }
+
+  schemas:
+    JobIDResponse:
+      type: object
+      properties:
+        job_id: { type: string }
+      required: [job_id]
+
+    Account:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        imap_host: { type: string }
+        imap_port: { type: integer }
+        imap_tls: { type: string, enum: [none, ssl, starttls, unknown] }
+        imap_username: { type: string }
+        oauth2_provider: { type: string, nullable: true }
+        is_active: { type: boolean }
+        sync_cron: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateAccountRequest:
+      type: object
+      required: [email, imap_host, imap_password]
+      properties:
+        email: { type: string, format: email }
+        display_name: { type: string }
+        imap_host: { type: string }
+        imap_port: { type: integer, description: "0 lets the server default to 993 (ssl) or 143 (otherwise)." }
+        imap_tls: { type: string, enum: [none, ssl, starttls], default: ssl }
+        imap_username: { type: string, description: Defaults to email if omitted. }
+        imap_password: { type: string, format: password }
+
+    CreateOAuth2AccountRequest:
+      type: object
+      required: [email, imap_host, oauth2_provider, oauth2_access_token]
+      properties:
+        email: { type: string, format: email }
+        display_name: { type: string }
+        imap_host: { type: string }
+        imap_port: { type: integer }
+        imap_tls: { type: string, enum: [none, ssl, starttls], default: ssl }
+        imap_username: { type: string }
+        oauth2_provider: { type: string, enum: [google, microsoft] }
+        oauth2_access_token: { type: string }
+        oauth2_refresh_token: { type: string }
+        oauth2_expires_in_seconds: { type: integer, description: "0 means unknown/never." }
+        oauth2_scope: { type: string }
+
+    UpdateAccountRequest:
+      type: object
+      properties:
+        display_name: { type: string }
+        imap_host: { type: string }
+        imap_port: { type: integer }
+        imap_tls: { type: string, enum: [none, ssl, starttls] }
+        imap_username: { type: string }
+        imap_password: { type: string, format: password, description: Empty string keeps the existing password. }
+        is_active: { type: boolean, nullable: true, description: Omitted/null keeps the current value. }
+        sync_cron: { type: string }
+
+    Folder:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        folder_name: { type: string }
+        uidvalidity: { type: integer, format: int64 }
+        last_uid: { type: integer, format: int64 }
+        sync_enabled: { type: boolean }
+
+    SyncLog:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        account_id: { type: integer, format: int64 }
+        email: { type: string, nullable: true }
+        started_at: { type: string, format: date-time }
+        ended_at: { type: string, format: date-time, nullable: true }
+        emails_processed: { type: integer }
+        emails_archived: { type: integer }
+        bytes_downloaded: { type: integer, format: int64 }
+        errors: { type: integer }
+        status: { type: string }
+        error_msg: { type: string, nullable: true }
+
+    SyncLogsPage:
+      type: object
+      properties:
+        total: { type: integer }
+        offset: { type: integer }
+        limit: { type: integer }
+        logs:
+          type: array
+          items: { $ref: "#/components/schemas/SyncLog" }
+
+    Attachment:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        filename: { type: string }
+        mime_type: { type: string }
+        size: { type: integer, format: int64 }
+
+    Email:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        message_id: { type: string }
+        subject: { type: string }
+        from: { type: string }
+        to: { type: array, items: { type: string } }
+        cc: { type: array, items: { type: string } }
+        date: { type: string, format: date-time }
+        account_id: { type: integer, format: int64 }
+        folder_id: { type: integer, format: int64 }
+        size: { type: integer, format: int64 }
+        has_attachments: { type: boolean }
+        storage_location: { type: string, enum: [local, s3] }
+        attachments:
+          type: array
+          items: { $ref: "#/components/schemas/Attachment" }
+        body_html: { type: string, nullable: true, description: "Sanitized HTML, safe to render as-is." }
+        body_text: { type: string, nullable: true }
+
+    RuleNode:
+      type: object
+      description: >-
+        Either {op, children} (a group) or {type, value} (a leaf), never
+        both. Groups nest up to 3 levels deep.
+      properties:
+        op: { type: string, enum: [and, or] }
+        children:
+          type: array
+          items: { $ref: "#/components/schemas/RuleNode" }
+        type:
+          type: string
+          enum:
+            - from_contains
+            - from_domain
+            - from_exact
+            - to_contains
+            - to_domain
+            - subject_contains
+            - has_attachments
+            - attachment_type
+            - size_greater_than
+            - size_less_than
+            - date_after
+            - date_before
+            - folder_is
+            - folder_is_not
+            - account_is
+        value: { type: string, description: "Always a string, regardless of the condition's semantic type." }
+
+    Rule:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        priority: { type: integer }
+        conditions: { $ref: "#/components/schemas/RuleNode" }
+        action: { type: string, enum: [archive, skip, archive_and_delete, archive_and_mark_read] }
+        is_active: { type: boolean }
+
+    RuleRequest:
+      type: object
+      required: [name, conditions, action]
+      properties:
+        name: { type: string }
+        priority: { type: integer }
+        conditions: { $ref: "#/components/schemas/RuleNode" }
+        action: { type: string, enum: [archive, skip, archive_and_delete, archive_and_mark_read] }
+        is_active: { type: boolean }
+
+    S3Settings:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        endpoint: { type: string }
+        region: { type: string }
+        bucket: { type: string }
+        path_style: { type: boolean }
+        storage_class: { type: string }
+        tls_skip_verify: { type: boolean }
+        credentials_configured: { type: boolean }
+        updated_at: { type: string, format: date-time }
+
+    SaveS3SettingsRequest:
+      type: object
+      required: [region, bucket]
+      properties:
+        enabled: { type: boolean }
+        endpoint: { type: string, description: "e.g. https://s3.amazonaws.com, or a MinIO URL." }
+        region: { type: string }
+        bucket: { type: string }
+        access_key: { type: string, description: Empty string keeps the currently stored key. }
+        secret_key: { type: string, format: password, description: Empty string keeps the currently stored key. }
+        path_style: { type: boolean, description: MinIO and most self-hosted S3 need this true. }
+        storage_class: { type: string, example: STANDARD }
+        tls_skip_verify: { type: boolean, description: Self-signed endpoints only. }
+
+    OAuth2App:
+      type: object
+      properties:
+        provider: { type: string }
+        client_id: { type: string }
+        redirect_url: { type: string }
+        credentials_configured: { type: boolean }
+        updated_at: { type: string, format: date-time }
+
+    SaveOAuth2AppRequest:
+      type: object
+      properties:
+        client_id: { type: string }
+        client_secret: { type: string, format: password, description: Empty string keeps the currently stored secret. }
+        redirect_url: { type: string }
+
+    RetentionSettings:
+      type: object
+      properties:
+        default_local_days: { type: integer, nullable: true, description: "null = unlimited." }
+        default_move_to_s3_days: { type: integer, nullable: true }
+        default_s3_days: { type: integer, nullable: true }
+        updated_at: { type: string, format: date-time }
+
+    ChangeMasterKeyRequest:
+      type: object
+      required: [current_password, new_password, confirm_password]
+      properties:
+        current_password: { type: string, format: password }
+        new_password: { type: string, format: password, minLength: 12 }
+        confirm_password: { type: string, format: password }
+
+    UnlockRequest:
+      type: object
+      required: [password]
+      properties:
+        password: { type: string, format: password, minLength: 12 }
+
+    RestoreRequest:
+      type: object
+      required: [email_ids, target_account_id, target_folder]
+      properties:
+        email_ids: { type: array, items: { type: integer, format: int64 } }
+        target_account_id: { type: integer, format: int64 }
+        target_folder: { type: string }
+
+    RestoreLog:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        email_id: { type: integer, format: int64 }
+        target_account_id: { type: integer, format: int64 }
+        target_folder: { type: string }
+        method: { type: string, enum: [imap_append, smtp] }
+        status: { type: string, enum: [completed, failed] }
+        error_msg: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    ExportRequest:
+      type: object
+      description: Provide either `email_ids` or `query` (used only when `email_ids` is empty).
+      properties:
+        email_ids: { type: array, items: { type: integer, format: int64 } }
+        query: { $ref: "#/components/schemas/ExportQueryFilter" }
+        job_id: { type: string, description: Optional — the server generates one if omitted. }
+
+    ExportQueryFilter:
+      type: object
+      properties:
+        q: { type: string }
+        sender: { type: string }
+        recipient: { type: string }
+        from: { type: string, description: RFC3339 or YYYY-MM-DD. }
+        to: { type: string, description: RFC3339 or YYYY-MM-DD. }
+        account_id: { type: integer, format: int64 }
+        folder_id: { type: integer, format: int64 }
+        has_attachments: { type: boolean, nullable: true }
+
+    SearchHit:
+      type: object
+      properties:
+        email_id: { type: integer, format: int64 }
+        message_id: { type: string }
+        subject: { type: string }
+        from: { type: string }
+        date: { type: string, format: date-time }
+        account_id: { type: integer, format: int64 }
+        folder_id: { type: integer, format: int64 }
+        has_attachments: { type: boolean }
+        size: { type: integer, format: int64 }
+        score: { type: number, format: double }
+
+    SearchResponse:
+      type: object
+      properties:
+        total: { type: integer, format: int64 }
+        offset: { type: integer }
+        limit: { type: integer }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/SearchHit" }
+
+    AccountStats:
+      type: object
+      properties:
+        account_id: { type: integer, format: int64 }
+        email: { type: string }
+        is_active: { type: boolean }
+        email_count: { type: integer }
+        last_sync_status: { type: string, nullable: true }
+        last_sync_at: { type: string, format: date-time, nullable: true }
+
+    Stats:
+      type: object
+      properties:
+        total_emails: { type: integer }
+        total_accounts: { type: integer }
+        active_accounts: { type: integer }
+        local_storage_bytes: { type: integer, format: int64 }
+        s3_storage_bytes: { type: integer, format: int64 }
+        s3_configured: { type: boolean }
+        s3_enabled: { type: boolean }
+        s3_queue_pending: { type: integer }
+        s3_queue_uploading: { type: integer }
+        s3_queue_failed: { type: integer }
+        accounts:
+          type: array
+          items: { $ref: "#/components/schemas/AccountStats" }

@@ -28,3 +28,7 @@ config.local.yaml
 .DS_Store
 .idea/
 .vscode/
+
+# Internal planning docs — not part of the public-facing documentation set
+/docs/01-brief.md
+/docs/02-tech-spec.md
