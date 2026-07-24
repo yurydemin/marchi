@@ -358,6 +358,52 @@ document.addEventListener("dragend", function () {
     .catch(function () {});
 });
 
+// --- Dashboard: per-account sync trigger --------------------------------
+//
+// One status span per account row (id="sync-status-{accountId}"), unlike
+// reindex/restore's single page-wide status element — a Dashboard with
+// several accounts can have more than one sync in flight (or clicked) at
+// once, each needing its own place to show progress.
+
+document.addEventListener("click", function (evt) {
+  const btn = evt.target.closest('[data-action="trigger-sync"]');
+  if (!btn) {
+    return;
+  }
+  const accountId = btn.dataset.accountId;
+  const statusEl = document.getElementById("sync-status-" + accountId);
+  btn.disabled = true;
+  if (statusEl) {
+    statusEl.textContent = statusEl.dataset.labelStarting;
+  }
+  connectJobProgressSocket()
+    .then(function () {
+      return fetch("/api/v1/accounts/" + accountId + "/sync", {
+        method: "POST",
+        headers: { "X-Csrf-Token": csrfToken() },
+      });
+    })
+    .then(function (res) {
+      return res.json();
+    })
+    .then(function (data) {
+      watchJobProgress(data.job_id, function (ev) {
+        if (statusEl) {
+          statusEl.textContent = ev.message;
+        }
+        if (ev.done) {
+          btn.disabled = false;
+        }
+      });
+    })
+    .catch(function () {
+      btn.disabled = false;
+      if (statusEl) {
+        statusEl.textContent = statusEl.dataset.labelFailed;
+      }
+    });
+});
+
 // --- Settings page: reindex trigger -------------------------------------
 
 document.addEventListener("click", function (evt) {

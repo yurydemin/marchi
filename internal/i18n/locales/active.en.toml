@@ -63,6 +63,8 @@
 "dashboard.col_last_sync" = "Last sync"
 "dashboard.col_last_sync_status" = "Last sync status"
 "dashboard.no_accounts" = "No accounts yet."
+"dashboard.sync_now_button" = "Sync now"
+"dashboard.sync_failed" = "Failed to start sync."
 
 # --- accounts.html ---
 "accounts.title" = "Accounts"

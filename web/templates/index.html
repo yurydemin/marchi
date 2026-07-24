@@ -46,6 +46,7 @@
         <th class="px-4 py-2">{{T "dashboard.col_emails"}}</th>
         <th class="px-4 py-2">{{T "dashboard.col_last_sync"}}</th>
         <th class="px-4 py-2">{{T "dashboard.col_last_sync_status"}}</th>
+        <th class="px-4 py-2 text-right">{{T "common.actions"}}</th>
       </tr>
     </thead>
     <tbody class="divide-y divide-stone-200 dark:divide-stone-700">
@@ -62,6 +63,12 @@
         <td class="px-4 py-2">{{.EmailCount}}</td>
         <td class="px-4 py-2">{{if .LastSyncAt}}{{formatTime .LastSyncAt}}{{else}}{{T "common.never"}}{{end}}</td>
         <td class="px-4 py-2">{{if .LastSyncStatus}}{{.LastSyncStatus}}{{else}}—{{end}}</td>
+        <td class="px-4 py-2 text-right">
+          {{if .IsActive}}
+          <button type="button" class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" data-action="trigger-sync" data-account-id="{{.AccountID}}">{{T "dashboard.sync_now_button"}}</button>
+          <span class="ml-2 text-xs text-stone-500 dark:text-stone-400" id="sync-status-{{.AccountID}}" data-label-starting="{{T "common.starting"}}" data-label-failed="{{T "dashboard.sync_failed"}}"></span>
+          {{end}}
+        </td>
       </tr>
       {{end}}
     </tbody>

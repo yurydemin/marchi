@@ -42,6 +42,7 @@ type testStats struct {
 }
 
 type testAccountStats struct {
+	AccountID      int64
 	Email          string
 	IsActive       bool
 	EmailCount     int
@@ -90,8 +91,8 @@ func TestParse_IndexPage_RendersLockedAndUnlockedContent(t *testing.T) {
 					ActiveAccounts:    1,
 					LocalStorageBytes: 123456,
 					Accounts: []testAccountStats{
-						{Email: "a@example.com", IsActive: true, EmailCount: 40, LastSyncStatus: "success", LastSyncAt: &syncedAt},
-						{Email: "b@example.com", IsActive: false, EmailCount: 2},
+						{AccountID: 1, Email: "a@example.com", IsActive: true, EmailCount: 40, LastSyncStatus: "success", LastSyncAt: &syncedAt},
+						{AccountID: 2, Email: "b@example.com", IsActive: false, EmailCount: 2},
 					},
 				},
 			}
@@ -106,6 +107,42 @@ func TestParse_IndexPage_RendersLockedAndUnlockedContent(t *testing.T) {
 				t.Errorf("rendered output unexpectedly contains %q, got:\n%s", tt.notWant, out)
 			}
 		})
+	}
+}
+
+// TestParse_IndexPage_SyncButtonOnlyForActiveAccounts guards the fix for
+// a real gap: the Dashboard used to have no way to trigger a sync at all
+// (only a "Test" connection button existed, on the Accounts page) — a
+// paused account's sync would silently no-op server-side
+// (scheduler.syncOne checks IsActive), so the button is only rendered
+// for active accounts to avoid a "Starting…" status that never resolves.
+func TestParse_IndexPage_SyncButtonOnlyForActiveAccounts(t *testing.T) {
+	pages, err := Parse()
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	data := struct {
+		Unlocked bool
+		Stats    testStats
+	}{
+		Unlocked: true,
+		Stats: testStats{
+			Accounts: []testAccountStats{
+				{AccountID: 1, Email: "active@example.com", IsActive: true},
+				{AccountID: 2, Email: "paused@example.com", IsActive: false},
+			},
+		},
+	}
+	var buf bytes.Buffer
+	if err := mustBind(t, pages["index"]).ExecuteTemplate(&buf, "layout", data); err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `data-account-id="1"`) {
+		t.Errorf("active account missing its sync button, got:\n%s", out)
+	}
+	if strings.Contains(out, `data-account-id="2"`) {
+		t.Errorf("paused account must not get a sync button, got:\n%s", out)
 	}
 }
 

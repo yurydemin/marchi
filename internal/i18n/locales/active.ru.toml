@@ -57,6 +57,8 @@
 "dashboard.col_last_sync" = "Последняя синхронизация"
 "dashboard.col_last_sync_status" = "Статус последней синхронизации"
 "dashboard.no_accounts" = "Пока нет аккаунтов."
+"dashboard.sync_now_button" = "Синхронизировать"
+"dashboard.sync_failed" = "Не удалось запустить синхронизацию."
 
 # --- accounts.html ---
 "accounts.title" = "Аккаунты"
