@@ -541,3 +541,34 @@ document.addEventListener("click", function (evt) {
       updateRestoreButtonState();
     });
 });
+
+// --- Archive: delete a single email from the archive -------------------
+
+document.addEventListener("click", function (evt) {
+  const btn = evt.target.closest('[data-action="delete-email"]');
+  if (!btn) {
+    return;
+  }
+  if (!window.confirm(btn.dataset.confirm)) {
+    return;
+  }
+  btn.disabled = true;
+  fetch("/api/v1/emails/" + btn.dataset.emailId, {
+    method: "DELETE",
+    headers: { "X-Csrf-Token": csrfToken() },
+  })
+    .then(function (res) {
+      if (!res.ok) {
+        throw new Error("delete failed");
+      }
+      // Reload without ?view=<id> so the viewer closes and the results
+      // list (which no longer matches the just-deleted email) refreshes.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("view");
+      window.location.href = url.toString();
+    })
+    .catch(function () {
+      window.alert(btn.dataset.labelFailed);
+      btn.disabled = false;
+    });
+});

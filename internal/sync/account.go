@@ -191,6 +191,7 @@ func SyncAccount(
 		total.Processed += stats.Processed
 		total.Archived += stats.Archived
 		total.Skipped += stats.Skipped
+		total.Duplicates += stats.Duplicates
 		total.Bytes += stats.Bytes
 		// RuleActionErrors folds into the same visible Errors count sync_logs
 		// already surfaces — both mean "something needs a look", even though

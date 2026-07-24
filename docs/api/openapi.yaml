@@ -240,6 +240,31 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/ServerError" }
+    delete:
+      tags: [Emails]
+      summary: Permanently delete one email from the archive
+      description: >-
+        Removes the row (cascading to attachments, its S3 upload queue
+        entry, and its restore history), the local .eml if any, its S3
+        object if any, and its search index entry. There is no undo — this
+        is the manual escape hatch for archive entries that shouldn't be
+        there (e.g. a duplicate created by re-syncing a restored email
+        before the archive-time Message-ID dedup check existed), not a
+        substitute for the automatic retention lifecycle.
+      parameters: [{ $ref: "#/components/parameters/EmailID" }]
+      responses:
+        "204":
+          description: Deleted
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >-
+            The email has an S3 copy, but S3 is not currently reachable
+            (never configured, or disabled after the upload happened) —
+            refused rather than deleted partially, to avoid silently
+            orphaning the S3 object.
+          content: { text/plain: { schema: { type: string } } }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /emails/{id}/download:
     get:

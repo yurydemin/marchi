@@ -45,8 +45,14 @@ type FetchStats struct {
 	// archive entirely (FR-RE-03) — last_uid still advances past them
 	// (see skipOne), so they're not reprocessed on the next sync.
 	Skipped int
-	Bytes   int64
-	Errors  int
+	// Duplicates counts messages whose Message-ID already exists
+	// elsewhere in this account's archive — most commonly a restored
+	// email (internal/restore) reappearing under a brand new UID once
+	// the next sync fetches it back. Not archived a second time; last_uid
+	// still advances past them, same as Skipped.
+	Duplicates int
+	Bytes      int64
+	Errors     int
 	// IndexErrors counts search-index (Bluge) write failures — best-effort
 	// (see archiveOne's doc comment): the email is still fully archived
 	// and this never contributes to Errors or stops the sync. A reindex
@@ -186,6 +192,45 @@ func FetchNewMessages(
 			continue
 		}
 
+		// Duplicate check (see ExistsByAccountMessageID's doc comment):
+		// most commonly a restored email reappearing under a new UID once
+		// this sync fetches it back. A blank Message-ID (malformed or
+		// missing header) never counts as a duplicate of anything —
+		// archiveOne synthesizes a UID-derived placeholder for those, so
+		// treating "" as a real value here would make every such message
+		// after the first look like a repeat of it.
+		if md.MessageID != "" {
+			dup, dupErr := emailsRepo.ExistsByAccountMessageID(ctx, accountID, md.MessageID)
+			if dupErr != nil {
+				stats.Errors++
+				firstErr = fmt.Errorf("sync: checking duplicate for UID %d in %q: %w", msg.Uid, folder.FolderName, dupErr)
+				onProgress.report(Progress{
+					AccountID: accountID, FolderName: folder.FolderName, CurrentUID: msg.Uid,
+					Total: estimatedTotal, Processed: stats.Processed, Archived: stats.Archived, Errors: stats.Errors,
+				})
+				continue
+			}
+			if dup {
+				if skipErr := skipOne(ctx, w, foldersRepo, folder.ID, msg.Uid); skipErr != nil {
+					stats.Errors++
+					firstErr = fmt.Errorf("sync: skipping duplicate UID %d in %q: %w", msg.Uid, folder.FolderName, skipErr)
+					onProgress.report(Progress{
+						AccountID: accountID, FolderName: folder.FolderName, CurrentUID: msg.Uid,
+						Total: estimatedTotal, Processed: stats.Processed, Archived: stats.Archived, Errors: stats.Errors,
+					})
+					continue
+				}
+				folder.LastUID = msg.Uid
+				stats.Duplicates++
+				stats.RuleActionErrors += applyPostArchiveRuleAction(c, action, msg.Uid)
+				onProgress.report(Progress{
+					AccountID: accountID, FolderName: folder.FolderName, CurrentUID: msg.Uid,
+					Total: estimatedTotal, Processed: stats.Processed, Archived: stats.Archived, Errors: stats.Errors,
+				})
+				continue
+			}
+		}
+
 		archivedBytes, indexErr, archErr := archiveOne(ctx, raw, md, attachments, msg.Uid, msg.Flags, accountID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx, s3Queue)
 		if archErr != nil {
 			stats.Errors++
@@ -205,16 +250,7 @@ func FetchNewMessages(
 		// here (logged via RuleActionErrors, not surfaced as firstErr)
 		// leaves the source message as-is rather than jeopardizing
 		// progress already made.
-		switch action {
-		case domain.ActionArchiveAndMarkRead:
-			if seenErr := imapclient.MarkSeen(c, msg.Uid); seenErr != nil {
-				stats.RuleActionErrors++
-			}
-		case domain.ActionArchiveAndDelete:
-			if delErr := imapclient.DeleteMessage(c, msg.Uid); delErr != nil {
-				stats.RuleActionErrors++
-			}
-		}
+		stats.RuleActionErrors += applyPostArchiveRuleAction(c, action, msg.Uid)
 
 		folder.LastUID = msg.Uid // keep the in-memory Folder in sync with what was just committed to the DB
 		stats.Archived++
@@ -228,6 +264,30 @@ func FetchNewMessages(
 		firstErr = fmt.Errorf("sync: UID FETCH in %q: %w", folder.FolderName, fetchErr)
 	}
 	return stats, firstErr
+}
+
+// applyPostArchiveRuleAction performs a rule's archive_and_mark_read /
+// archive_and_delete IMAP side effect (FR-RE-03) against the source
+// message. Shared by both the normal archive path and the duplicate-skip
+// path (see the Duplicates check above) — a rule that says "delete from
+// the server after archiving" should still delete a message that turned
+// out to already be in the archive under a different UID; the archive
+// copy already exists either way, so there's no reason to leave the
+// source copy behind just because this particular sync didn't create a
+// new row for it. Returns 1 if the side effect was attempted and failed,
+// 0 otherwise, for the caller to fold into RuleActionErrors.
+func applyPostArchiveRuleAction(c *client.Client, action domain.RuleAction, uid uint32) int {
+	switch action {
+	case domain.ActionArchiveAndMarkRead:
+		if err := imapclient.MarkSeen(c, uid); err != nil {
+			return 1
+		}
+	case domain.ActionArchiveAndDelete:
+		if err := imapclient.DeleteMessage(c, uid); err != nil {
+			return 1
+		}
+	}
+	return 0
 }
 
 // parseMessage reads msg's full body and extracts the metadata/attachment

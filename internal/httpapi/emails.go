@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -12,12 +13,13 @@ import (
 )
 
 // registerEmails wires the Emails REST API (FR-API-02, FR-VW-01/02):
-// metadata + sanitized body preview, downloading the original .eml, and
-// downloading an individual attachment.
+// metadata + sanitized body preview, downloading the original .eml,
+// downloading an individual attachment, and deleting a single email.
 func registerEmails(app *fiber.App, vault *vaultState) {
 	app.Get("/api/v1/emails/:id", handleGetEmail(vault))
 	app.Get("/api/v1/emails/:id/download", handleDownloadEmail(vault))
 	app.Get("/api/v1/emails/:id/attachments/:att_id/download", handleDownloadAttachment(vault))
+	app.Delete("/api/v1/emails/:id", handleDeleteEmail(vault))
 }
 
 type attachmentResponse struct {
@@ -215,5 +217,62 @@ func handleDownloadAttachment(vault *vaultState) fiber.Handler {
 		c.Set(fiber.HeaderContentType, mimeType)
 		c.Attachment(att.Filename)
 		return c.Send(content)
+	}
+}
+
+// handleDeleteEmail permanently removes one email from the archive —
+// the row (cascading to attachments, s3_upload_queue, and restore_logs),
+// the local .eml if one exists, its S3 object if one was uploaded, and
+// its search index entry. This is the escape hatch for the case
+// internal/sync/fetch.go's Message-ID dedup check guards against going
+// forward: an email restored (internal/restore) back into a mailbox
+// before that check existed, then re-archived as an unrelated duplicate
+// on the next sync — nothing else in the archive can remove it.
+//
+// An email with an S3 copy that can't currently be reached (S3 not
+// configured, or was disabled after the upload happened) is refused
+// rather than deleted partially — silently orphaning a paid-for S3
+// object with no local record of it left behind is worse than the user
+// having to retry once S3 is reachable again.
+func handleDeleteEmail(vault *vaultState) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		b, err := currentBackendOrLocked(vault)
+		if err != nil {
+			return err
+		}
+		id, err := idParam(c, "id")
+		if err != nil {
+			return err
+		}
+
+		e, err := b.emailsRepo.GetByID(c.Context(), id)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fiber.NewError(fiber.StatusNotFound, "email not found")
+			}
+			return fiber.NewError(fiber.StatusInternalServerError, "loading email failed")
+		}
+
+		if e.S3Key != "" {
+			if b.lazyLoader == nil {
+				return fiber.NewError(fiber.StatusConflict, "email has an S3 copy but S3 is not currently configured — cannot delete it completely")
+			}
+			if err := b.lazyLoader.Client.Delete(c.Context(), e.S3Key); err != nil {
+				return fiber.NewError(fiber.StatusInternalServerError, "deleting S3 object failed")
+			}
+		}
+
+		if err := b.w.Do(c.Context(), func(tx *sql.Tx) error {
+			return b.emailsRepo.DeleteCompletely(c.Context(), tx, e.ID)
+		}); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "deleting email failed")
+		}
+
+		if e.LocalPath != "" {
+			_ = os.Remove(e.LocalPath)
+		}
+		_ = b.currentIndex().Delete(e.ID)
+
+		return c.SendStatus(fiber.StatusNoContent)
 	}
 }

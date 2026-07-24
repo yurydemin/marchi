@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -429,5 +430,105 @@ func TestEmailsRepo_ListStorageLocations_EmptyInput(t *testing.T) {
 	}
 	if len(locations) != 0 {
 		t.Errorf("locations = %v, want empty", locations)
+	}
+}
+
+func TestEmailsRepo_ExistsByAccountMessageID(t *testing.T) {
+	emails, folders, accounts, w := openTestEmailsRepo(t)
+	ctx := context.Background()
+
+	accountID := mustCreateAccount(t, accounts)
+	otherAccountID, err := accounts.Create(ctx, accountFixture("other@example.com"))
+	if err != nil {
+		t.Fatalf("creating second account fixture: %v", err)
+	}
+	folder := mustCreateFolder(t, folders, accountID, "INBOX")
+
+	if err := w.Do(ctx, func(tx *sql.Tx) error {
+		_, err := emails.Insert(ctx, tx, &domain.Email{
+			MessageID: "dup@example.com", AccountID: accountID, FolderID: folder.ID, UID: 1,
+			StorageLocation: "local", LocalPath: "/data/1.eml",
+		})
+		return err
+	}); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+
+	exists, err := emails.ExistsByAccountMessageID(ctx, accountID, "dup@example.com")
+	if err != nil {
+		t.Fatalf("ExistsByAccountMessageID: %v", err)
+	}
+	if !exists {
+		t.Error("exists = false, want true for a message_id already archived in this account")
+	}
+
+	exists, err = emails.ExistsByAccountMessageID(ctx, accountID, "never-seen@example.com")
+	if err != nil {
+		t.Fatalf("ExistsByAccountMessageID: %v", err)
+	}
+	if exists {
+		t.Error("exists = true, want false for a message_id never archived")
+	}
+
+	// Scoped per account: the same Message-ID legitimately archived under
+	// a different account is not a duplicate from that other account's
+	// point of view.
+	exists, err = emails.ExistsByAccountMessageID(ctx, otherAccountID, "dup@example.com")
+	if err != nil {
+		t.Fatalf("ExistsByAccountMessageID: %v", err)
+	}
+	if exists {
+		t.Error("exists = true, want false — message_id belongs to a different account")
+	}
+}
+
+// TestEmailsRepo_DeleteCompletely_CascadesRestoreLogs guards against a
+// regression of migration 000008: restore_logs.email_id originally had no
+// ON DELETE CASCADE, so deleting an archived email that had ever been
+// restored failed outright with a FOREIGN KEY constraint error under
+// PRAGMA foreign_keys=ON — exactly the path the manual "delete from
+// archive" API (DELETE /api/v1/emails/{id}) exercises.
+func TestEmailsRepo_DeleteCompletely_CascadesRestoreLogs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "marchi.db")
+	sqlDB, err := db.Open(path)
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	t.Cleanup(func() { sqlDB.Close() })
+	w := writer.New(sqlDB)
+	t.Cleanup(func() { w.Close() })
+
+	emails := NewEmailsRepo(sqlDB, w)
+	folders := NewFoldersRepo(sqlDB, w)
+	accounts := NewAccountsRepo(sqlDB, w)
+	restoreLogs := NewRestoreLogsRepo(sqlDB, w)
+	ctx := context.Background()
+
+	accountID := mustCreateAccount(t, accounts)
+	folder := mustCreateFolder(t, folders, accountID, "INBOX")
+	emailID := insertEmail(t, emails, w, accountID, folder.ID, 1)
+
+	if _, err := restoreLogs.Create(ctx, &domain.RestoreLog{
+		EmailID: emailID, TargetAccountID: accountID, TargetFolder: "INBOX",
+		Method: domain.RestoreMethodIMAPAppend, Status: domain.RestoreStatusCompleted,
+	}); err != nil {
+		t.Fatalf("restoreLogs.Create: %v", err)
+	}
+
+	if err := w.Do(ctx, func(tx *sql.Tx) error {
+		return emails.DeleteCompletely(ctx, tx, emailID)
+	}); err != nil {
+		t.Fatalf("DeleteCompletely with a referencing restore_logs row: %v", err)
+	}
+
+	if _, err := emails.GetByID(ctx, emailID); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("GetByID after delete = %v, want sql.ErrNoRows", err)
+	}
+	logs, err := restoreLogs.ListByEmail(ctx, emailID)
+	if err != nil {
+		t.Fatalf("ListByEmail: %v", err)
+	}
+	if len(logs) != 0 {
+		t.Errorf("restore_logs survived the cascade: %v", logs)
 	}
 }

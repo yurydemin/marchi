@@ -111,6 +111,28 @@ func (r *EmailsRepo) GetByID(ctx context.Context, id int64) (*domain.Email, erro
 	return scanEmail(row)
 }
 
+// ExistsByAccountMessageID reports whether accountID already has an
+// archived email with this Message-ID, regardless of which folder or UID
+// it's under. archiveOne calls this before writing a new emails row so
+// that restoring an archived email back into the mailbox (IMAP APPEND
+// assigns it a fresh UID — there's no way around that, restore is not
+// UID-preserving) and then re-syncing doesn't archive it a second time as
+// an unrelated "new" message. Scoped to one account, not global: the same
+// Message-ID legitimately showing up in two different accounts (e.g. a
+// message CC'd to both) is not a duplicate in the sense this guards
+// against and must still be archived independently for each.
+func (r *EmailsRepo) ExistsByAccountMessageID(ctx context.Context, accountID int64, messageID string) (bool, error) {
+	var exists int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM emails WHERE account_id = ? AND message_id = ?)`,
+		accountID, messageID,
+	).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("repo: checking duplicate message_id for account %d: %w", accountID, err)
+	}
+	return exists != 0, nil
+}
+
 // ListAll returns every email in the archive, ordered by id — used for a
 // full reindex (FR-SR-04), which needs every locally-archived .eml
 // regardless of which account or folder it belongs to.

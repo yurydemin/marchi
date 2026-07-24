@@ -488,3 +488,80 @@ func TestFetchNewMessages_NilProgressFunc_DoesNotPanic(t *testing.T) {
 		t.Fatalf("Archived = %d, want 1", stats.Archived)
 	}
 }
+
+// TestFetchNewMessages_DuplicateMessageID_SkipsInsteadOfArchivingAgain
+// covers the restore-then-resync scenario that motivated the dedup check:
+// internal/restore's IMAP APPEND necessarily assigns a restored email a
+// brand new UID (there's no way to preserve the original one), so without
+// this check the next sync would archive it a second time as an unrelated
+// "new" message purely because its UID looks new — even though its
+// Message-Id, and therefore its identity, is unchanged.
+func TestFetchNewMessages_DuplicateMessageID_SkipsInsteadOfArchivingAgain(t *testing.T) {
+	env := newFetchTestEnv(t)
+
+	firstAddr := startFakeFetchServer(t, fakeFetchServer{
+		uidValidity: 1001,
+		uidNext:     2,
+		messages:    []fakeMessage{{uid: 1, flags: "", body: testEmail("dup")}},
+	})
+	c1 := connectToFakeServer(t, firstAddr)
+	defer c1.Logout()
+
+	folder, err := env.foldersR.UpsertFolder(context.Background(), env.accountID, "INBOX", 1001)
+	if err != nil {
+		t.Fatalf("UpsertFolder: %v", err)
+	}
+	mw := env.newWriter(t, "INBOX")
+
+	stats1, err := FetchNewMessages(context.Background(), c1, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("first FetchNewMessages: %v", err)
+	}
+	if stats1.Archived != 1 {
+		t.Fatalf("first sync Archived = %d, want 1", stats1.Archived)
+	}
+
+	// Simulate the email having been restored back into the mailbox and
+	// this being the next sync: same Message-Id ("dup@example.com", from
+	// testEmail), but a new UID — exactly what IMAP APPEND produces.
+	secondAddr := startFakeFetchServer(t, fakeFetchServer{
+		uidValidity: 1001,
+		uidNext:     3,
+		messages:    []fakeMessage{{uid: 2, flags: "", body: testEmail("dup")}},
+	})
+	c2 := connectToFakeServer(t, secondAddr)
+	defer c2.Logout()
+
+	stats2, err := FetchNewMessages(context.Background(), c2, env.accountID, folder, mw, env.w, env.emailsR, env.foldersR, env.attachmentsR, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("second FetchNewMessages: %v", err)
+	}
+	if stats2.Archived != 0 {
+		t.Errorf("second sync Archived = %d, want 0 (must be recognized as a duplicate, not archived again)", stats2.Archived)
+	}
+	if stats2.Duplicates != 1 {
+		t.Errorf("second sync Duplicates = %d, want 1", stats2.Duplicates)
+	}
+	if stats2.Processed != 1 {
+		t.Errorf("second sync Processed = %d, want 1", stats2.Processed)
+	}
+
+	emails, err := env.emailsR.ListByFolder(context.Background(), folder.ID)
+	if err != nil {
+		t.Fatalf("ListByFolder: %v", err)
+	}
+	if len(emails) != 1 {
+		t.Fatalf("got %d emails in DB, want 1 (the duplicate must not create a second row)", len(emails))
+	}
+	if emails[0].UID != 1 {
+		t.Errorf("surviving email UID = %d, want 1 (the original archive entry, not the duplicate)", emails[0].UID)
+	}
+
+	updatedFolders, err := env.foldersR.ListByAccount(context.Background(), env.accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updatedFolders[0].LastUID != 2 {
+		t.Errorf("LastUID = %d, want 2 (the duplicate's UID must still advance the watermark, or it would be refetched forever)", updatedFolders[0].LastUID)
+	}
+}
