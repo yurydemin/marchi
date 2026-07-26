@@ -11,7 +11,10 @@ services:
       - marchi-data:/data
 
   marchi:
-    build: .
+    image: ghcr.io/yurydemin/marchi:latest
+    # Building from source instead (e.g. to test an unreleased change)?
+    # Comment out the image line above and uncomment this one:
+    # build: .
     depends_on:
       marchi-data-init:
         condition: service_completed_successfully

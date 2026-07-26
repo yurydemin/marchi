@@ -170,6 +170,7 @@ func newRootCmd(loc *i18n.Localizer) *cobra.Command {
 	root.AddCommand(newLogsCmd(loc))
 	root.AddCommand(newReindexCmd(loc))
 	root.AddCommand(newRetentionCmd(loc))
+	root.AddCommand(newBackupCmd(loc))
 
 	return root
 }

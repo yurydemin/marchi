@@ -153,8 +153,13 @@ marchi sync user@example.com
 marchi status                    # история синхронизаций по всем аккаунтам
 marchi retention run             # один проход retention прямо сейчас
 marchi reindex                   # пересборка поискового индекса
+marchi backup run <dest-dir>     # горячий бэкап БД+maildir+ключей, без остановки сервиса
+marchi backup verify <dest-dir>  # сверка контрольных сумм и целостности бэкапа
 marchi config show               # итоговая конфигурация (дефолты + файл + окружение)
 ```
+
+Подробности про `backup`/`backup verify` (что именно копируется, как восстанавливать) —
+в README, раздел «Резервное копирование и восстановление».
 
 `marchi --help` и `marchi <команда> --help` уважают `--lang ru` (или переменную
 окружения `LANG`/`LC_ALL`) — описания команд переключаются на русский так же, как и

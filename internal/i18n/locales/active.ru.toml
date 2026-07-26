@@ -249,4 +249,7 @@
 "cli.reindex.short" = "Пересобрать полнотекстовый поисковый индекс из локального архива .eml (FR-SR-04)"
 "cli.retention.short" = "Управлять жизненным циклом retention архива (FR-RE-04)"
 "cli.retention_run.short" = "Выполнить один проход retention сейчас (стадии A→B→C, FR-RE-04)"
+"cli.backup.short" = "Резервное копирование базы данных, Maildir и ключевого материала Master Key"
+"cli.backup_run.short" = "Записать полный бэкап в новую директорию"
+"cli.backup_verify.short" = "Проверить контрольные суммы и целостность БД в бэкапе"
 "cli.lang_flag_help" = "Язык интерфейса для описаний команд (en, ru) — переопределяет LANG/LC_ALL"

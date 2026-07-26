@@ -32,3 +32,4 @@ config.local.yaml
 # Internal planning docs — not part of the public-facing documentation set
 /docs/01-brief.md
 /docs/02-tech-spec.md
+/docs/v0.1.2-analys-and-backlog.md

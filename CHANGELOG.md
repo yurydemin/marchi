@@ -3,6 +3,19 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — на
 [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [0.2.0] — 2026-07-26
+
+### Добавлено
+
+- `marchi backup run <dest-dir>` / `marchi backup verify <dest-dir>` — горячий бэкап базы
+  данных (через SQLite Online Backup API — без остановки сервиса и без блокировки текущей
+  записи), Maildir и ключевого материала Master Key (`.salt`/`.mk-verify`/`.dek`), с
+  манифестом контрольных сумм SHA-256 и сверкой целостности при `verify`. Раньше
+  официальный способ бэкапа требовал полной остановки сервиса.
+- Docker-образ теперь публикуется в `ghcr.io/yurydemin/marchi` при каждом релизе (теги
+  `:{версия}` и `:latest`) — раньше единственным способом получить образ была сборка из
+  исходников. `docker-compose.yml` по умолчанию использует опубликованный образ.
+
 ## [0.1.2] — 2026-07-25
 
 ### Исправлено
@@ -114,6 +127,7 @@
 - `govulncheck` в CI на каждый push/PR.
 - Аудит лицензий всех 89 зависимостей — MIT/Apache-2.0/BSD/MPL-2.0, копилефт-лицензий нет.
 
+[0.2.0]: https://github.com/yurydemin/marchi/releases/tag/v0.2.0
 [0.1.2]: https://github.com/yurydemin/marchi/releases/tag/v0.1.2
 [0.1.1]: https://github.com/yurydemin/marchi/releases/tag/v0.1.1
 [0.1.0]: https://github.com/yurydemin/marchi/releases/tag/v0.1.0
