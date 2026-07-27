@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -17,6 +18,8 @@ import (
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
 	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/notify"
+	"github.com/yurydemin/marchi/internal/notifyconfig"
 	"github.com/yurydemin/marchi/internal/oauth2config"
 	"github.com/yurydemin/marchi/internal/reindex"
 	"github.com/yurydemin/marchi/internal/restore"
@@ -35,6 +38,14 @@ import (
 // follows, rather than adding a dedicated config field for a single
 // optional path.
 const rulesYAMLFilename = "rules.yaml"
+
+// notifyThrottleCooldown bounds how often the same kind of failure
+// notification (per account, where applicable) can re-fire — see
+// notify.Throttle. An hour is long enough that a scheduler tick stuck on
+// the same broken account, or an S3 queue that stays backlogged, doesn't
+// spam the configured webhook/email every few minutes, while still
+// re-alerting well within a single day if the problem is still there.
+const notifyThrottleCooldown = time.Hour
 
 // backend holds everything that requires the vault to be unlocked: the
 // SQLite connection, Single Writer, repos, Account Manager, search index,
@@ -72,6 +83,17 @@ type backend struct {
 	// (restore.Deps.OAuth2Refresher).
 	oauth2AppsRepo  *repo.OAuth2AppsRepo
 	oauth2ConfigMgr *oauth2config.Manager
+
+	// notificationSettingsRepo/notifyConfigMgr back the Notification
+	// Settings API (Phase 5 P0-2), mirroring s3ConfigRepo/s3ConfigManager's
+	// role for S3. notifier is the built (and notify.Throttle-wrapped)
+	// Notifier resolved once at unlock time from whatever's currently
+	// saved — nil if notifications were never configured or neither
+	// channel is enabled, the same "resolved once, not hot-reloaded"
+	// trade-off startS3Components already makes for S3 settings.
+	notificationSettingsRepo *repo.NotificationSettingsRepo
+	notifyConfigMgr          *notifyconfig.Manager
+	notifier                 notify.Notifier
 
 	// s3Uploader is the mirror upload queue's worker pool (FR-S3-06),
 	// started only if s3_config exists and is Enabled at unlock time —
@@ -173,27 +195,54 @@ func newBackend(cfg *config.Config, logger *zap.Logger, dek []byte, hub *wsHub) 
 		return nil, fmt.Errorf("httpapi: initializing oauth2 config manager: %w", err)
 	}
 
+	notificationSettingsRepo := repo.NewNotificationSettingsRepo(sqlDB, w)
+	notifyConfigMgr, err := notifyconfig.NewManager(notificationSettingsRepo, dek)
+	if err != nil {
+		_ = idx.Close()
+		w.Close()
+		_ = db.Close(sqlDB)
+		return nil, fmt.Errorf("httpapi: initializing notification config manager: %w", err)
+	}
+
 	b := &backend{
-		sqlDB:                 sqlDB,
-		w:                     w,
-		maildirRoot:           cfg.Storage.MaildirPath,
-		indexPath:             cfg.Search.IndexPath,
-		wsHub:                 hub,
-		accountsRepo:          accountsRepo,
-		foldersRepo:           repo.NewFoldersRepo(sqlDB, w),
-		emailsRepo:            repo.NewEmailsRepo(sqlDB, w),
-		attachmentsRepo:       repo.NewAttachmentsRepo(sqlDB, w),
-		syncLogsRepo:          repo.NewSyncLogsRepo(sqlDB, w),
-		rulesRepo:             repo.NewRulesRepo(sqlDB, w),
-		s3ConfigRepo:          s3ConfigRepo,
-		s3UploadQueueRepo:     repo.NewS3UploadQueueRepo(sqlDB, w),
-		s3ConfigManager:       s3ConfigMgr,
-		retentionSettingsRepo: retentionSettingsRepo,
-		restoreLogsRepo:       repo.NewRestoreLogsRepo(sqlDB, w),
-		manager:               mgr,
-		oauth2AppsRepo:        oauth2AppsRepo,
-		oauth2ConfigMgr:       oauth2ConfigMgr,
-		index:                 idx,
+		sqlDB:                    sqlDB,
+		w:                        w,
+		maildirRoot:              cfg.Storage.MaildirPath,
+		indexPath:                cfg.Search.IndexPath,
+		wsHub:                    hub,
+		accountsRepo:             accountsRepo,
+		foldersRepo:              repo.NewFoldersRepo(sqlDB, w),
+		emailsRepo:               repo.NewEmailsRepo(sqlDB, w),
+		attachmentsRepo:          repo.NewAttachmentsRepo(sqlDB, w),
+		syncLogsRepo:             repo.NewSyncLogsRepo(sqlDB, w),
+		rulesRepo:                repo.NewRulesRepo(sqlDB, w),
+		s3ConfigRepo:             s3ConfigRepo,
+		s3UploadQueueRepo:        repo.NewS3UploadQueueRepo(sqlDB, w),
+		s3ConfigManager:          s3ConfigMgr,
+		retentionSettingsRepo:    retentionSettingsRepo,
+		restoreLogsRepo:          repo.NewRestoreLogsRepo(sqlDB, w),
+		manager:                  mgr,
+		oauth2AppsRepo:           oauth2AppsRepo,
+		oauth2ConfigMgr:          oauth2ConfigMgr,
+		notificationSettingsRepo: notificationSettingsRepo,
+		notifyConfigMgr:          notifyConfigMgr,
+		index:                    idx,
+	}
+
+	// Resolved once, at unlock time, from whatever's currently saved —
+	// same trade-off startS3Components makes for S3 settings (a settings
+	// change afterward takes effect on the next unlock/restart, not
+	// live). sql.ErrNoRows (never configured) just means notifications
+	// stay off, the zero-config default.
+	if notifySettings, err := notifyConfigMgr.Get(context.Background()); err == nil {
+		n, buildErr := notifyConfigMgr.BuildNotifier(notifySettings)
+		if buildErr != nil {
+			logger.Warn("httpapi: building notifier from saved settings failed, failure notifications not available", zap.Error(buildErr))
+		} else if n != nil {
+			b.notifier = notify.Throttle(n, notifyThrottleCooldown)
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		logger.Warn("httpapi: loading notification settings failed, failure notifications not available", zap.Error(err))
 	}
 
 	retentionRunner := retention.New(retention.Deps{
@@ -216,6 +265,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, dek []byte, hub *wsHub) 
 		Writer:            b.w,
 		Host:              host,
 		IndexFunc:         b.currentIndex,
+		Notifier:          b.notifier,
 		ProgressFunc: func(jobID string, a *domain.Account, p syncengine.Progress) {
 			hub.broadcast(syncWSEvent(jobID, a, p, false, ""))
 		},
@@ -290,7 +340,8 @@ func (b *backend) startS3Components(ctx context.Context, cfg *config.Config, log
 
 	uploader := s3store.NewUploader(s3store.UploaderDeps{
 		Client: client, QueueRepo: b.s3UploadQueueRepo, MasterKey: dek, Logger: logger,
-		Workers: cfg.S3.UploadWorkers,
+		Workers:  cfg.S3.UploadWorkers,
+		Notifier: b.notifier,
 		OnError: func(item *domain.S3UploadQueueItem, uploadErr error) {
 			b.wsHub.broadcast(s3UploadErrorWSEvent(item, uploadErr))
 		},

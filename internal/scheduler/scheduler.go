@@ -24,10 +24,19 @@ import (
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
 	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/notify"
 	"github.com/yurydemin/marchi/internal/retention"
 	"github.com/yurydemin/marchi/internal/search"
 	syncengine "github.com/yurydemin/marchi/internal/sync"
 )
+
+// diskSpaceLowThresholdBytes triggers a "disk_space_low" notification
+// (Phase 5 P0-2) once free space on the Maildir volume drops below this.
+// Not configurable yet — 500MB is comfortably above what a single sync
+// batch or S3 upload retry needs, while low enough that it only fires
+// when there's a real, actionable problem rather than routine disk
+// pressure on a small VPS.
+const diskSpaceLowThresholdBytes = 500 * 1024 * 1024
 
 // defaultRetentionCron is FR-RE-04's "ежедневно в 03:00" — used whenever
 // Deps.RetentionCron is left empty.
@@ -71,6 +80,13 @@ type Deps struct {
 	Manager         *account.Manager
 	Writer          writer.Writer
 	Host            string
+	// Notifier, if nil, means failure notifications are disabled — the
+	// same nil-means-off convention RulesRepo/S3ConfigRepo/RetentionRunner
+	// above already use. Non-nil, it's called on sync failures, retention
+	// failures, and (from refresh's periodic check) low disk space —
+	// callers typically wrap it in notify.Throttle so a condition that
+	// keeps recurring every tick doesn't re-fire every minute.
+	Notifier notify.Notifier
 	// IndexFunc returns the search index to use for the sync about to run,
 	// resolved fresh each time rather than captured once — so a caller
 	// that swaps its index at runtime (a live reindex, FR-SR-04) is picked
@@ -180,6 +196,8 @@ func (s *Scheduler) Stop() {
 // them: newly-active accounts get a cron entry, deactivated/removed ones
 // lose theirs, and accounts whose cron expression changed get rescheduled.
 func (s *Scheduler) refresh(ctx context.Context) {
+	s.checkDiskSpace(ctx)
+
 	accounts, err := s.deps.AccountsRepo.List(ctx)
 	if err != nil {
 		s.logger.Error("scheduler: listing accounts failed, keeping previous schedule", zap.Error(err))
@@ -301,6 +319,10 @@ func (s *Scheduler) syncOne(accountID int64, jobID string) {
 	if syncErr != nil {
 		s.logger.Warn("scheduler: sync finished with errors",
 			zap.String("email", a.Email), zap.Int("archived", archived), zap.Error(syncErr))
+		s.notify(ctx, notify.Event{
+			Kind: "sync_failed", Message: fmt.Sprintf("sync for %s failed: %s", a.Email, syncErr.Error()),
+			AccountEmail: a.Email, Time: time.Now(),
+		})
 		return
 	}
 	s.logger.Info("scheduler: sync completed", zap.String("email", a.Email), zap.Int("archived", archived))
@@ -330,6 +352,9 @@ func (s *Scheduler) runRetention(ctx context.Context) {
 	stats, err := s.deps.RetentionRunner.Run(ctx)
 	if err != nil {
 		s.logger.Error("scheduler: retention run failed", zap.Error(err))
+		s.notify(ctx, notify.Event{
+			Kind: "retention_failed", Message: fmt.Sprintf("retention run failed: %s", err.Error()), Time: time.Now(),
+		})
 		return
 	}
 	s.logger.Info("scheduler: retention run completed",
@@ -337,4 +362,44 @@ func (s *Scheduler) runRetention(ctx context.Context) {
 		zap.Int("deleted_direct", stats.DeletedDirect),
 		zap.Int("deleted_from_s3", stats.DeletedFromS3),
 		zap.Int("errors", stats.Errors))
+}
+
+// notify is a nil-safe wrapper around deps.Notifier — every call site
+// above stays readable without its own "if s.deps.Notifier != nil"
+// guard, matching the nil-means-off convention every other optional
+// Deps field already follows.
+func (s *Scheduler) notify(ctx context.Context, e notify.Event) {
+	if s.deps.Notifier == nil {
+		return
+	}
+	if err := s.deps.Notifier.Notify(ctx, e); err != nil {
+		s.logger.Warn("scheduler: delivering failure notification failed", zap.String("kind", e.Kind), zap.Error(err))
+	}
+}
+
+// checkDiskSpace fires a "disk_space_low" notification once free space
+// on the Maildir volume drops below diskSpaceLowThresholdBytes. Runs
+// from refresh's existing per-minute tick rather than its own timer —
+// cron-tick granularity is already exactly the cadence this needs, and
+// notify.Throttle (applied by the caller that builds deps.Notifier) is
+// what keeps this from re-alerting every single tick while space stays
+// low, not any state kept here.
+func (s *Scheduler) checkDiskSpace(ctx context.Context) {
+	if s.deps.Notifier == nil {
+		return
+	}
+	free, err := freeDiskBytesFunc(s.cfg.Storage.MaildirPath)
+	if err != nil {
+		s.logger.Warn("scheduler: checking free disk space failed", zap.Error(err))
+		return
+	}
+	if free >= diskSpaceLowThresholdBytes {
+		return
+	}
+	s.notify(ctx, notify.Event{
+		Kind:    "disk_space_low",
+		Message: fmt.Sprintf("only %d MB free on the Maildir volume", free/1024/1024),
+		Time:    time.Now(),
+		Meta:    map[string]any{"free_bytes": free},
+	})
 }

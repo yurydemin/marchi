@@ -14,6 +14,8 @@ import (
 
 	"github.com/yurydemin/marchi/internal/config"
 	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/notify"
+	"github.com/yurydemin/marchi/internal/notifyconfig"
 	"github.com/yurydemin/marchi/internal/oauth2config"
 	"github.com/yurydemin/marchi/internal/s3config"
 	"github.com/yurydemin/marchi/internal/s3store"
@@ -32,6 +34,9 @@ type settingsPageData struct {
 	S3Configured bool
 	S3           s3SettingsResponse
 
+	NotificationsConfigured bool
+	Notifications           notificationSettingsResponse
+
 	GoogleApp    *oauth2AppResponse
 	MicrosoftApp *oauth2AppResponse
 
@@ -46,6 +51,8 @@ func registerSettingsPage(app *fiber.App, cfg *config.Config, vault *vaultState,
 	app.Post("/settings/master-key", handleSettingsChangeMasterKey(cfg, vault, store, pages))
 	app.Put("/settings/s3", handleSettingsSaveS3(vault, store, pages))
 	app.Post("/settings/s3/test", handleSettingsTestS3(vault, store, pages))
+	app.Put("/settings/notifications", handleSettingsSaveNotifications(vault, store, pages))
+	app.Post("/settings/notifications/test", handleSettingsTestNotifications(vault, store, pages))
 	app.Put("/settings/oauth2/:provider", handleSettingsSaveOAuth2(vault, store, pages))
 	app.Put("/settings/retention", handleSettingsSaveRetention(vault, store, pages))
 }
@@ -82,6 +89,16 @@ func loadSettingsPageData(c *fiber.Ctx, b *backend) (settingsPageData, error) {
 	} else {
 		data.S3Configured = true
 		data.S3 = s3SettingsResponseFrom(s3)
+	}
+
+	notif, err := b.notifyConfigMgr.Get(c.Context())
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return data, fiber.NewError(fiber.StatusInternalServerError, "loading notification settings failed")
+		}
+	} else {
+		data.NotificationsConfigured = true
+		data.Notifications = notificationSettingsResponseFrom(notif)
 	}
 
 	apps, err := b.oauth2ConfigMgr.List(c.Context())
@@ -246,6 +263,106 @@ func handleSettingsTestS3(vault *vaultState, store *session.Store, pages map[str
 			return renderSettingsResult(c, pages, "s3-test-result", settingsError(err.Error()))
 		}
 		return renderSettingsResult(c, pages, "s3-test-result", settingsOK(localizer(c).T("settings.result.s3_connected")))
+	}
+}
+
+type settingsNotificationsFormRequest struct {
+	WebhookEnabled bool   `form:"webhook_enabled"`
+	WebhookURL     string `form:"webhook_url"`
+	WebhookSecret  string `form:"webhook_secret"`
+
+	EmailEnabled bool   `form:"email_enabled"`
+	SMTPHost     string `form:"smtp_host"`
+	SMTPPort     int    `form:"smtp_port"`
+	SMTPUsername string `form:"smtp_username"`
+	SMTPPassword string `form:"smtp_password"`
+	SMTPFrom     string `form:"smtp_from"`
+	SMTPTo       string `form:"smtp_to"`
+}
+
+func handleSettingsSaveNotifications(vault *vaultState, store *session.Store, pages map[string]*template.Template) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		b, err := requireUnlockedSession(c, vault, store)
+		if err != nil {
+			return err
+		}
+		var req settingsNotificationsFormRequest
+		if err := c.BodyParser(&req); err != nil {
+			return renderSettingsResult(c, pages, "notifications-result", settingsError(localizer(c).T("common.invalid_form")))
+		}
+		if _, err := b.notifyConfigMgr.Save(c.Context(), notifyconfig.SaveParams{
+			WebhookEnabled: req.WebhookEnabled, WebhookURL: req.WebhookURL, WebhookSecret: req.WebhookSecret,
+			EmailEnabled: req.EmailEnabled, SMTPHost: req.SMTPHost, SMTPPort: req.SMTPPort,
+			SMTPUsername: req.SMTPUsername, SMTPPassword: req.SMTPPassword,
+			SMTPFrom: req.SMTPFrom, SMTPTo: req.SMTPTo,
+		}); err != nil {
+			return renderSettingsResult(c, pages, "notifications-result", settingsError(err.Error()))
+		}
+		return renderSettingsResult(c, pages, "notifications-result", settingsOK(localizer(c).T("settings.result.notifications_saved")))
+	}
+}
+
+// handleSettingsTestNotifications sends a real test notification through
+// every currently-enabled, currently-saved channel — mirroring
+// handleTestNotificationSettings (the JSON API's own version, which
+// exists separately because it returns per-channel JSON, not an HTML
+// fragment). Both channels' outcomes are folded into one settingsResult:
+// OK only if every enabled channel succeeded, with each channel's own
+// error (if any) listed in the message.
+func handleSettingsTestNotifications(vault *vaultState, store *session.Store, pages map[string]*template.Template) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		b, err := requireUnlockedSession(c, vault, store)
+		if err != nil {
+			return err
+		}
+		loc := localizer(c)
+		s, err := b.notifyConfigMgr.Get(c.Context())
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return renderSettingsResult(c, pages, "notifications-result", settingsError(loc.T("settings.result.notifications_not_configured")))
+			}
+			return renderSettingsResult(c, pages, "notifications-result", settingsError("loading notification settings failed"))
+		}
+		if !s.WebhookEnabled && !s.EmailEnabled {
+			return renderSettingsResult(c, pages, "notifications-result", settingsError(loc.T("settings.result.notifications_no_channel")))
+		}
+
+		webhookSecret, smtpPassword, err := b.notifyConfigMgr.DecryptSecrets(s)
+		if err != nil {
+			return renderSettingsResult(c, pages, "notifications-result", settingsError("decrypting notification secrets failed"))
+		}
+
+		testEvent := notify.Event{Kind: "test", Message: "This is a test notification from Marchi.", Time: time.Now()}
+		ok := true
+		var parts []string
+
+		if s.WebhookEnabled {
+			wn := &notify.WebhookNotifier{URL: s.WebhookURL, Secret: webhookSecret}
+			if err := wn.Notify(c.Context(), testEvent); err != nil {
+				ok = false
+				parts = append(parts, "webhook: "+err.Error())
+			} else {
+				parts = append(parts, "webhook: "+loc.T("common.ok"))
+			}
+		}
+		if s.EmailEnabled {
+			en := &notify.EmailNotifier{
+				Host: s.SMTPHost, Port: s.SMTPPort, Username: s.SMTPUsername, Password: smtpPassword,
+				From: s.SMTPFrom, To: s.SMTPTo,
+			}
+			if err := en.Notify(c.Context(), testEvent); err != nil {
+				ok = false
+				parts = append(parts, "email: "+err.Error())
+			} else {
+				parts = append(parts, "email: "+loc.T("common.ok"))
+			}
+		}
+
+		message := strings.Join(parts, "; ")
+		if ok {
+			return renderSettingsResult(c, pages, "notifications-result", settingsOK(message))
+		}
+		return renderSettingsResult(c, pages, "notifications-result", settingsError(message))
 	}
 }
 

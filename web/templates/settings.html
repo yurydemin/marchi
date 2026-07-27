@@ -74,6 +74,59 @@
 </div>
 
 <div class="mb-8 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 p-6 shadow-sm">
+  <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">{{T "settings.notifications_heading"}}</h2>
+  <p class="mb-3 text-xs text-stone-500 dark:text-stone-400">{{T "settings.notifications_description"}}</p>
+  <form hx-put="/settings/notifications" hx-target="#notifications-result" hx-swap="innerHTML" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <label class="flex items-center gap-2 text-sm sm:col-span-2">
+      <input type="checkbox" name="webhook_enabled" value="true" {{if .Notifications.WebhookEnabled}}checked{{end}}>
+      {{T "settings.notifications_webhook_enabled_label"}}
+    </label>
+    <div>
+      <label class="mb-1 block text-sm font-medium" for="notif_webhook_url">{{T "settings.notifications_webhook_url"}}</label>
+      <input class="w-full rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm focus:border-amber-600 dark:focus:border-amber-500 focus:outline-none" type="text" id="notif_webhook_url" name="webhook_url" value="{{.Notifications.WebhookURL}}" placeholder="https://example.com/hook">
+    </div>
+    <div>
+      <label class="mb-1 block text-sm font-medium" for="notif_webhook_secret">{{T "settings.notifications_webhook_secret"}} {{if .Notifications.WebhookSecretConfigured}}<span class="font-normal text-stone-400 dark:text-stone-500">{{T "settings.notifications_secret_configured_hint"}}</span>{{end}}</label>
+      <input class="w-full rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm focus:border-amber-600 dark:focus:border-amber-500 focus:outline-none" type="password" id="notif_webhook_secret" name="webhook_secret">
+    </div>
+    <label class="flex items-center gap-2 text-sm sm:col-span-2">
+      <input type="checkbox" name="email_enabled" value="true" {{if .Notifications.EmailEnabled}}checked{{end}}>
+      {{T "settings.notifications_email_enabled_label"}}
+    </label>
+    <div>
+      <label class="mb-1 block text-sm font-medium" for="notif_smtp_host">{{T "settings.notifications_smtp_host"}}</label>
+      <input class="w-full rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm focus:border-amber-600 dark:focus:border-amber-500 focus:outline-none" type="text" id="notif_smtp_host" name="smtp_host" value="{{.Notifications.SMTPHost}}">
+    </div>
+    <div>
+      <label class="mb-1 block text-sm font-medium" for="notif_smtp_port">{{T "settings.notifications_smtp_port"}}</label>
+      <input class="w-full rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm focus:border-amber-600 dark:focus:border-amber-500 focus:outline-none" type="number" id="notif_smtp_port" name="smtp_port" value="{{.Notifications.SMTPPort}}" placeholder="587">
+    </div>
+    <div>
+      <label class="mb-1 block text-sm font-medium" for="notif_smtp_username">{{T "settings.notifications_smtp_username"}}</label>
+      <input class="w-full rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm focus:border-amber-600 dark:focus:border-amber-500 focus:outline-none" type="text" id="notif_smtp_username" name="smtp_username" value="{{.Notifications.SMTPUsername}}">
+    </div>
+    <div>
+      <label class="mb-1 block text-sm font-medium" for="notif_smtp_password">{{T "settings.notifications_smtp_password"}} {{if .Notifications.SMTPPasswordConfigured}}<span class="font-normal text-stone-400 dark:text-stone-500">{{T "settings.notifications_secret_configured_hint"}}</span>{{end}}</label>
+      <input class="w-full rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm focus:border-amber-600 dark:focus:border-amber-500 focus:outline-none" type="password" id="notif_smtp_password" name="smtp_password">
+    </div>
+    <div>
+      <label class="mb-1 block text-sm font-medium" for="notif_smtp_from">{{T "settings.notifications_smtp_from"}}</label>
+      <input class="w-full rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm focus:border-amber-600 dark:focus:border-amber-500 focus:outline-none" type="text" id="notif_smtp_from" name="smtp_from" value="{{.Notifications.SMTPFrom}}">
+    </div>
+    <div>
+      <label class="mb-1 block text-sm font-medium" for="notif_smtp_to">{{T "settings.notifications_smtp_to"}}</label>
+      <input class="w-full rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm focus:border-amber-600 dark:focus:border-amber-500 focus:outline-none" type="text" id="notif_smtp_to" name="smtp_to" value="{{.Notifications.SMTPTo}}" placeholder="{{T "settings.notifications_smtp_to_placeholder"}}">
+    </div>
+    <div class="sm:col-span-2">
+      <button class="rounded bg-amber-800 dark:bg-amber-600 dark:text-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:hover:bg-amber-500" type="submit">{{T "settings.notifications_save_button"}}</button>
+      <button class="ml-2 rounded border border-stone-300 dark:border-stone-600 px-4 py-2 text-sm font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700" type="button"
+        hx-post="/settings/notifications/test" hx-target="#notifications-result" hx-swap="innerHTML">{{T "settings.notifications_test_button"}}</button>
+      <div id="notifications-result" class="mt-2 text-sm"></div>
+    </div>
+  </form>
+</div>
+
+<div class="mb-8 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 p-6 shadow-sm">
   <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">{{T "settings.oauth2_heading"}}</h2>
   <p class="mb-4 text-xs text-stone-500 dark:text-stone-400">{{T "settings.oauth2_description"}}</p>
 
@@ -185,6 +238,7 @@
 {{define "master-key-result"}}{{template "settings-result" .}}{{end}}
 {{define "s3-result"}}{{template "settings-result" .}}{{end}}
 {{define "s3-test-result"}}{{template "settings-result" .}}{{end}}
+{{define "notifications-result"}}{{template "settings-result" .}}{{end}}
 {{define "oauth2-google-result"}}{{template "settings-result" .}}{{end}}
 {{define "oauth2-microsoft-result"}}{{template "settings-result" .}}{{end}}
 {{define "retention-result"}}{{template "settings-result" .}}{{end}}

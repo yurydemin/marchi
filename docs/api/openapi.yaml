@@ -444,6 +444,72 @@ paths:
           content: { text/plain: { schema: { type: string } } }
         "500": { $ref: "#/components/responses/ServerError" }
 
+  /notifications/settings:
+    get:
+      tags: [Notification Settings]
+      summary: Get failure-notification settings
+      description: Encrypted secret/password material is never returned — only *_configured flags.
+      responses:
+        "200":
+          description: OK (either shape, both HTTP 200)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties: { configured: { type: boolean, enum: [false] } }
+                  - type: object
+                    properties:
+                      configured: { type: boolean, enum: [true] }
+                      settings: { $ref: "#/components/schemas/NotificationSettings" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    put:
+      tags: [Notification Settings]
+      summary: Create or update failure-notification settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveNotificationSettingsRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationSettings" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /notifications/settings/test:
+    post:
+      tags: [Notification Settings]
+      summary: Send a test notification through every currently-enabled, currently-saved channel
+      description: >-
+        Uses the settings already on disk, not a request body. Reports
+        each enabled channel's own success/failure independently — unlike
+        production notifications (best-effort, never surfaced as an
+        error), a test-send exists specifically to show configuration
+        problems.
+      responses:
+        "200":
+          description: Per-channel result (HTTP 200 regardless of whether a channel failed)
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  oneOf:
+                    - type: object
+                      properties: { ok: { type: boolean, enum: [true] } }
+                    - type: object
+                      properties:
+                        ok: { type: boolean, enum: [false] }
+                        error: { type: string }
+                example:
+                  webhook: { ok: true }
+                  email: { ok: false, error: "notify: sending email via smtp.example.com: ..." }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
   /oauth2/apps:
     get:
       tags: [OAuth2 Settings]
@@ -970,6 +1036,35 @@ components:
         path_style: { type: boolean, description: MinIO and most self-hosted S3 need this true. }
         storage_class: { type: string, example: STANDARD }
         tls_skip_verify: { type: boolean, description: Self-signed endpoints only. }
+
+    NotificationSettings:
+      type: object
+      properties:
+        webhook_enabled: { type: boolean }
+        webhook_url: { type: string }
+        webhook_secret_configured: { type: boolean }
+        email_enabled: { type: boolean }
+        smtp_host: { type: string }
+        smtp_port: { type: integer, example: 587 }
+        smtp_username: { type: string }
+        smtp_password_configured: { type: boolean }
+        smtp_from: { type: string }
+        smtp_to: { type: string, description: Comma-separated for multiple recipients. }
+        updated_at: { type: string, format: date-time }
+
+    SaveNotificationSettingsRequest:
+      type: object
+      properties:
+        webhook_enabled: { type: boolean }
+        webhook_url: { type: string }
+        webhook_secret: { type: string, format: password, description: Empty string keeps the currently stored secret. }
+        email_enabled: { type: boolean }
+        smtp_host: { type: string }
+        smtp_port: { type: integer, example: 587 }
+        smtp_username: { type: string }
+        smtp_password: { type: string, format: password, description: Empty string keeps the currently stored password. }
+        smtp_from: { type: string }
+        smtp_to: { type: string, description: Comma-separated for multiple recipients. }
 
     OAuth2App:
       type: object

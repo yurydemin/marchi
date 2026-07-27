@@ -3,6 +3,16 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — на
 [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [0.3.0] — 2026-07-27
+
+### Добавлено
+
+- Уведомления о сбоях: webhook (с опциональной HMAC-SHA256 подписью тела) и email через
+  отдельный исходящий SMTP-relay. Срабатывают на сбой синхронизации, сбой retention,
+  переполнение очереди S3-загрузки и нехватку места на диске; повторные уведомления
+  одного типа не чаще раза в час. Настраивается в Settings — там же тестовая отправка по
+  каждому каналу отдельно.
+
 ## [0.2.0] — 2026-07-26
 
 ### Добавлено
@@ -127,6 +137,7 @@
 - `govulncheck` в CI на каждый push/PR.
 - Аудит лицензий всех 89 зависимостей — MIT/Apache-2.0/BSD/MPL-2.0, копилефт-лицензий нет.
 
+[0.3.0]: https://github.com/yurydemin/marchi/releases/tag/v0.3.0
 [0.2.0]: https://github.com/yurydemin/marchi/releases/tag/v0.2.0
 [0.1.2]: https://github.com/yurydemin/marchi/releases/tag/v0.1.2
 [0.1.1]: https://github.com/yurydemin/marchi/releases/tag/v0.1.1

@@ -15,6 +15,7 @@ import (
 
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/notify"
 )
 
 // Upload queue tuning (FR-S3-06): base-2 exponential backoff, capped at
@@ -26,6 +27,14 @@ const (
 	maxBackoff        = time.Hour
 	defaultPollPeriod = 5 * time.Second
 	defaultBatchSize  = 20
+	// queueBacklogThreshold triggers an "s3_queue_backlog" notification
+	// (Phase 5 P0-2) once pending+failed rows reach this count — high
+	// enough that a normal burst after a large sync doesn't false-alarm
+	// (BatchSize already drains defaultBatchSize items every
+	// defaultPollPeriod, so a transient spike clears itself quickly),
+	// but low enough to catch a queue that's genuinely stuck (bad
+	// credentials, unreachable endpoint) well before it grows unbounded.
+	queueBacklogThreshold = 200
 )
 
 // UploaderDeps bundles what the upload queue worker pool needs: a
@@ -44,6 +53,12 @@ type UploaderDeps struct {
 	// hook internal/httpapi uses to broadcast a WebSocket notification
 	// (FR-S3-06: "WebSocket-уведомления об ошибках загрузки").
 	OnError func(item *domain.S3UploadQueueItem, err error)
+	// Notifier, if nil, disables the queue-backlog check entirely — same
+	// nil-means-off convention as OnError/every other optional dependency.
+	// Non-nil, it's checked against queueBacklogThreshold on every poll
+	// (typically wrapped in notify.Throttle by the caller, so a backlog
+	// that stays high doesn't re-fire every PollPeriod).
+	Notifier notify.Notifier
 }
 
 // Uploader is the S3 mirror upload queue's worker pool: one dispatcher
@@ -122,6 +137,8 @@ func (u *Uploader) dispatch(ctx context.Context, items chan<- *domain.S3UploadQu
 	defer ticker.Stop()
 
 	poll := func() {
+		u.checkBacklog(ctx)
+
 		claimed, err := u.deps.QueueRepo.ClaimBatch(ctx, u.deps.BatchSize)
 		if err != nil {
 			u.logger.Warn("s3store: claiming upload queue batch failed", zap.Error(err))
@@ -148,6 +165,35 @@ func (u *Uploader) dispatch(ctx context.Context, items chan<- *domain.S3UploadQu
 		case <-ticker.C:
 			poll()
 		}
+	}
+}
+
+// checkBacklog fires an "s3_queue_backlog" notification once pending+
+// failed rows reach queueBacklogThreshold. Runs at the start of every
+// poll rather than on its own timer — PollPeriod is already exactly the
+// cadence this needs, and notify.Throttle (applied by whoever builds
+// deps.Notifier) is what prevents re-alerting on every single poll while
+// the backlog stays high, not any state kept here.
+func (u *Uploader) checkBacklog(ctx context.Context) {
+	if u.deps.Notifier == nil {
+		return
+	}
+	counts, err := u.deps.QueueRepo.CountByStatus(ctx)
+	if err != nil {
+		u.logger.Warn("s3store: checking upload queue backlog failed", zap.Error(err))
+		return
+	}
+	backlog := counts["pending"] + counts["failed"]
+	if backlog < queueBacklogThreshold {
+		return
+	}
+	if err := u.deps.Notifier.Notify(ctx, notify.Event{
+		Kind:    "s3_queue_backlog",
+		Message: fmt.Sprintf("S3 upload queue backlog: %d pending/failed items", backlog),
+		Time:    time.Now(),
+		Meta:    map[string]any{"pending": counts["pending"], "failed": counts["failed"]},
+	}); err != nil {
+		u.logger.Warn("s3store: delivering queue-backlog notification failed", zap.Error(err))
 	}
 }
 
