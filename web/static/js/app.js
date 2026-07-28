@@ -542,6 +542,89 @@ document.addEventListener("click", function (evt) {
     });
 });
 
+// --- Archive: restore an entire account or folder -----------------------
+//
+// Distinct from the per-selection restore above: no search/checkboxes
+// involved, just a target account + a free-text target folder root. The
+// target folder isn't picked from the target account's existing folders
+// (unlike per-selection restore) because restoring a whole mailbox
+// creates new subfolders under the root to preserve source structure
+// (POST /api/v1/restore/bulk, internal/httpapi/restore_api.go's
+// joinRestoreFolder) — there's nothing existing to pick from yet.
+
+function updateBulkRestoreButtonState() {
+  const account = document.getElementById("bulk-restore-target-account");
+  const root = document.getElementById("bulk-restore-target-folder-root");
+  const enabled = !!(account && account.value && root && root.value.trim());
+  document.querySelectorAll('[data-action="trigger-bulk-restore"]').forEach(function (btn) {
+    btn.disabled = !enabled;
+  });
+}
+
+document.addEventListener("change", function (evt) {
+  if (evt.target.id === "bulk-restore-target-account") {
+    updateBulkRestoreButtonState();
+  }
+});
+
+document.addEventListener("input", function (evt) {
+  if (evt.target.id === "bulk-restore-target-folder-root") {
+    updateBulkRestoreButtonState();
+  }
+});
+
+document.addEventListener("click", function (evt) {
+  const btn = evt.target.closest('[data-action="trigger-bulk-restore"]');
+  if (!btn) {
+    return;
+  }
+  if (!window.confirm(btn.dataset.confirm)) {
+    return;
+  }
+  const targetAccountID = Number(document.getElementById("bulk-restore-target-account").value);
+  const targetFolderRoot = document.getElementById("bulk-restore-target-folder-root").value.trim();
+  const statusEl = document.getElementById("bulk-restore-status");
+  const allButtons = document.querySelectorAll('[data-action="trigger-bulk-restore"]');
+  allButtons.forEach(function (b) {
+    b.disabled = true;
+  });
+  if (statusEl) {
+    statusEl.textContent = statusEl.dataset.labelStarting;
+  }
+  connectJobProgressSocket()
+    .then(function () {
+      return fetch("/api/v1/restore/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Csrf-Token": csrfToken() },
+        body: JSON.stringify({
+          scope: btn.dataset.scope,
+          scope_id: Number(btn.dataset.scopeId),
+          target_account_id: targetAccountID,
+          target_folder_root: targetFolderRoot,
+        }),
+      });
+    })
+    .then(function (res) {
+      return res.json();
+    })
+    .then(function (data) {
+      watchJobProgress(data.job_id, function (ev) {
+        if (statusEl) {
+          statusEl.textContent = ev.message;
+        }
+        if (ev.done) {
+          updateBulkRestoreButtonState();
+        }
+      });
+    })
+    .catch(function () {
+      if (statusEl) {
+        statusEl.textContent = statusEl.dataset.labelFailed;
+      }
+      updateBulkRestoreButtonState();
+    });
+});
+
 // --- Archive: delete a single email from the archive -------------------
 
 document.addEventListener("click", function (evt) {
@@ -569,6 +652,80 @@ document.addEventListener("click", function (evt) {
     })
     .catch(function () {
       window.alert(btn.dataset.labelFailed);
+      btn.disabled = false;
+    });
+});
+
+// --- Rules page: dry-run against the archive -----------------------------
+//
+// "Test against archive" (add-rule-form and rule-edit-row both carry a
+// [data-rule-builder-wrapper] with their own builder + button + result
+// div, so this one listener handles both). Reuses serializeRuleNode to
+// build the same {op,children}/{type,value} tree the real create/update
+// submit sends, but posts it to /api/v1/rules/dry-run — a read-only scan
+// that never touches the rules table — so a rule (especially
+// archive_and_delete) can be sanity-checked before it's ever saved.
+// Sample subjects/senders come straight from stored email metadata, so
+// they're rendered via textContent/createElement, never innerHTML.
+
+document.addEventListener("click", function (evt) {
+  const btn = evt.target.closest('[data-action="dry-run"]');
+  if (!btn) {
+    return;
+  }
+  const wrapper = btn.closest("[data-rule-builder-wrapper]");
+  const root = wrapper && wrapper.querySelector("[data-rule-builder] [data-node]");
+  const resultEl = wrapper && wrapper.querySelector("[data-dry-run-result]");
+  if (!root || !resultEl) {
+    return;
+  }
+
+  btn.disabled = true;
+  resultEl.textContent = btn.dataset.labelRunning;
+
+  fetch("/api/v1/rules/dry-run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Csrf-Token": csrfToken() },
+    body: JSON.stringify({ conditions: serializeRuleNode(root) }),
+  })
+    .then(function (res) {
+      if (!res.ok) {
+        throw new Error("dry-run failed");
+      }
+      return res.json();
+    })
+    .then(function (data) {
+      resultEl.textContent = btn.dataset.labelResult
+        .replace("{total}", data.total_scanned)
+        .replace("{matched}", data.matched_count);
+
+      if (!data.samples || data.samples.length === 0) {
+        if (data.matched_count === 0) {
+          const none = document.createElement("div");
+          none.textContent = btn.dataset.labelNoMatches;
+          resultEl.appendChild(none);
+        }
+        return;
+      }
+
+      const heading = document.createElement("div");
+      heading.className = "mt-1 font-medium";
+      heading.textContent = btn.dataset.labelSamplesHeading;
+      resultEl.appendChild(heading);
+
+      const list = document.createElement("ul");
+      list.className = "mt-1 list-disc space-y-0.5 pl-4";
+      data.samples.forEach(function (sample) {
+        const item = document.createElement("li");
+        item.textContent = (sample.subject || "(no subject)") + " — " + sample.from + " — " + sample.date;
+        list.appendChild(item);
+      });
+      resultEl.appendChild(list);
+    })
+    .catch(function () {
+      resultEl.textContent = btn.dataset.labelFailed;
+    })
+    .finally(function () {
       btn.disabled = false;
     });
 });

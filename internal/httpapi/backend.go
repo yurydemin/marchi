@@ -422,14 +422,35 @@ func (b *backend) runReindexAsync(jobID string) {
 	}()
 }
 
+// restoreItem pairs an email with the target folder it should land in —
+// the same for every item in a single-selection restore (handleRestore),
+// but potentially different per item in a bulk whole-account restore
+// (handleBulkRestore), where each source folder maps to its own target
+// subfolder under a shared root.
+type restoreItem struct {
+	EmailID      int64
+	TargetFolder string
+}
+
 // runRestoreAsync restores each of emailIDs into targetAccountID's
-// targetFolder in order, broadcasting progress after every attempt and a
-// final summary when the whole batch is done (FR-RS-01's bulk restore +
-// FR-API-03's WS progress) — the same detached-background-job shape as
-// runReindexAsync, tracked in bgJobs the same way. One email's failure
-// (already recorded in restore_logs by RestoreOne itself) doesn't stop
-// the rest of the batch.
+// targetFolder in order — the single-target-folder case, used by the
+// per-selection restore trigger.
 func (b *backend) runRestoreAsync(jobID string, emailIDs []int64, targetAccountID int64, targetFolder string) {
+	items := make([]restoreItem, len(emailIDs))
+	for i, id := range emailIDs {
+		items[i] = restoreItem{EmailID: id, TargetFolder: targetFolder}
+	}
+	b.runRestoreItemsAsync(jobID, items, targetAccountID)
+}
+
+// runRestoreItemsAsync restores each item into targetAccountID, each into
+// its own item.TargetFolder, broadcasting progress after every attempt
+// and a final summary when the whole batch is done (FR-RS-01's bulk
+// restore + FR-API-03's WS progress) — a detached background job, tracked
+// in bgJobs like runReindexAsync. One email's failure (already recorded
+// in restore_logs by RestoreOne itself) doesn't stop the rest of the
+// batch.
+func (b *backend) runRestoreItemsAsync(jobID string, items []restoreItem, targetAccountID int64) {
 	b.bgJobs.Add(1)
 	go func() {
 		defer b.bgJobs.Done()
@@ -439,23 +460,23 @@ func (b *backend) runRestoreAsync(jobID string, emailIDs []int64, targetAccountI
 			OAuth2Refresher: b.oauth2ConfigMgr,
 		})
 
-		total := len(emailIDs)
+		total := len(items)
 		succeeded, failed := 0, 0
 		ctx := context.Background()
-		for i, emailID := range emailIDs {
-			log, err := restorer.RestoreOne(ctx, emailID, targetAccountID, targetFolder)
+		for i, item := range items {
+			log, err := restorer.RestoreOne(ctx, item.EmailID, targetAccountID, item.TargetFolder)
 			switch {
 			case err != nil:
 				failed++
 				b.wsHub.broadcast(restoreWSEvent(jobID, i+1, total, succeeded, failed, false,
-					fmt.Sprintf("email %d: %v", emailID, err)))
+					fmt.Sprintf("email %d: %v", item.EmailID, err)))
 			case log.Status == domain.RestoreStatusCompleted:
 				succeeded++
 				b.wsHub.broadcast(restoreWSEvent(jobID, i+1, total, succeeded, failed, false, ""))
 			default:
 				failed++
 				b.wsHub.broadcast(restoreWSEvent(jobID, i+1, total, succeeded, failed, false,
-					fmt.Sprintf("email %d: %s", emailID, log.ErrorMsg)))
+					fmt.Sprintf("email %d: %s", item.EmailID, log.ErrorMsg)))
 			}
 		}
 		b.wsHub.broadcast(restoreWSEvent(jobID, total, total, succeeded, failed, true, ""))

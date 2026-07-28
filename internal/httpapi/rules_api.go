@@ -17,6 +17,7 @@ import (
 func registerRulesAPI(app *fiber.App, vault *vaultState) {
 	app.Get("/api/v1/rules", handleListRules(vault))
 	app.Post("/api/v1/rules", handleCreateRule(vault))
+	app.Post("/api/v1/rules/dry-run", handleDryRunRules(vault))
 	app.Put("/api/v1/rules/:id", handleUpdateRule(vault))
 	app.Delete("/api/v1/rules/:id", handleDeleteRule(vault))
 }

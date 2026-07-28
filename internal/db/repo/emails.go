@@ -133,6 +133,25 @@ func (r *EmailsRepo) ExistsByAccountMessageID(ctx context.Context, accountID int
 	return exists != 0, nil
 }
 
+// ListForDryRun returns up to limit emails ordered by id, scoped to
+// accountID if non-nil — internal/rules' dry-run feature (a "which
+// already-archived emails would this condition tree match" check before
+// saving a rule) uses this instead of ListAll/ListByAccount specifically
+// because it needs a hard cap: unlike a full reindex or an account
+// listing, a dry-run request can be fired repeatedly while someone is
+// still editing a rule in the UI, so it must never scan an unbounded
+// number of rows on every keystroke-adjacent click.
+func (r *EmailsRepo) ListForDryRun(ctx context.Context, accountID *int64, limit int) ([]*domain.Email, error) {
+	const cols = `id, message_id, account_id, folder_id, uid, subject, from_addr,
+		to_addrs, cc_addrs, date, size, has_attachments, flags,
+		storage_location, local_path, s3_key, s3_etag, s3_sha256, s3_only_since,
+		created_at, updated_at`
+	if accountID != nil {
+		return r.queryEmails(ctx, `SELECT `+cols+` FROM emails WHERE account_id = ? ORDER BY id LIMIT ?`, *accountID, limit)
+	}
+	return r.queryEmails(ctx, `SELECT `+cols+` FROM emails ORDER BY id LIMIT ?`, limit)
+}
+
 // ListAll returns every email in the archive, ordered by id — used for a
 // full reindex (FR-SR-04), which needs every locally-archived .eml
 // regardless of which account or folder it belongs to.

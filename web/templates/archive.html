@@ -59,6 +59,39 @@
       </div>
     </form>
 
+    {{/* Hoisted out of the .Results-gated panel below so the bulk
+         whole-account/whole-folder restore panel (also gated on
+         .AccountID, independent of whether a search has been run) can
+         reference the same per-account folder options by id. */}}
+    {{range .Accounts}}
+    <template data-restore-folders-for="{{.ID}}">
+      {{range .Folders}}<option value="{{.Name}}">{{.Name}}</option>{{end}}
+    </template>
+    {{end}}
+
+    {{if .AccountID}}
+    <div class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 p-4 shadow-sm">
+      <div>
+        <label class="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400" for="bulk-restore-target-account">{{T "archive.restore_target_account"}}</label>
+        <select class="rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm" id="bulk-restore-target-account">
+          <option value="">{{T "archive.restore_select_account"}}</option>
+          {{range .Accounts}}
+          <option value="{{.ID}}">{{.Email}}</option>
+          {{end}}
+        </select>
+      </div>
+      <div>
+        <label class="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400" for="bulk-restore-target-folder-root">{{T "archive.bulk_restore_target_root"}}</label>
+        <input class="rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm" type="text" id="bulk-restore-target-folder-root" placeholder="{{T "archive.bulk_restore_target_root_placeholder"}}">
+      </div>
+      {{if .FolderID}}
+      <button class="rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50" type="button" data-action="trigger-bulk-restore" data-scope="folder" data-scope-id="{{.FolderID}}" data-confirm="{{T "archive.bulk_restore_confirm"}}" disabled>{{T "archive.bulk_restore_folder"}}</button>
+      {{end}}
+      <button class="rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50" type="button" data-action="trigger-bulk-restore" data-scope="account" data-scope-id="{{.AccountID}}" data-confirm="{{T "archive.bulk_restore_confirm"}}" disabled>{{T "archive.bulk_restore_account"}}</button>
+      <span class="text-sm text-stone-500 dark:text-stone-400" id="bulk-restore-status" data-label-starting="{{T "common.starting"}}" data-label-failed="{{T "archive.restore_failed"}}"></span>
+    </div>
+    {{end}}
+
     {{if .Results}}
     <div class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 p-4 shadow-sm">
       <div>
@@ -75,11 +108,6 @@
         <select class="rounded border border-stone-300 dark:border-stone-600 px-3 py-2 text-sm" id="restore-target-folder" disabled>
           <option value="">{{T "archive.restore_select_account_first"}}</option>
         </select>
-        {{range .Accounts}}
-        <template data-restore-folders-for="{{.ID}}">
-          {{range .Folders}}<option value="{{.Name}}">{{.Name}}</option>{{end}}
-        </template>
-        {{end}}
       </div>
       <button class="rounded bg-amber-800 dark:bg-amber-600 dark:text-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50" type="button" data-action="trigger-restore" disabled>{{T "archive.restore_selected"}}</button>
       <span class="text-sm text-stone-500 dark:text-stone-400" id="restore-status" data-label-starting="{{T "common.starting"}}" data-label-failed="{{T "archive.restore_failed"}}"></span>

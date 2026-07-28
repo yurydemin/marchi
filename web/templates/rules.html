@@ -112,11 +112,13 @@ resets it client-side instead (see its htmx:afterRequest listener for
     {{T "rules.field_active"}}
   </label>
 
-  <div class="mt-4">
+  <div class="mt-4" data-rule-builder-wrapper>
     <span class="mb-2 block text-sm font-medium">{{T "rules.conditions_label"}}</span>
     <div data-rule-builder>
       {{template "rule-node" (ruleNodeView . 1)}}
     </div>
+    <button type="button" data-action="dry-run" data-label-running="{{T "rules.dry_run_running"}}" data-label-failed="{{T "rules.dry_run_failed"}}" data-label-result="{{T "rules.dry_run_result"}}" data-label-no-matches="{{T "rules.dry_run_no_matches"}}" data-label-samples-heading="{{T "rules.dry_run_samples_heading"}}" class="mt-2 rounded border border-stone-300 dark:border-stone-600 px-3 py-1.5 text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700">{{T "rules.dry_run_button"}}</button>
+    <div data-dry-run-result class="mt-2 text-xs text-stone-500 dark:text-stone-400"></div>
   </div>
 
   <button class="mt-4 rounded bg-amber-800 dark:bg-amber-600 dark:text-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:hover:bg-amber-500" type="submit">{{T "rules.add_rule_button"}}</button>
@@ -214,11 +216,13 @@ identically.
         {{T "rules.field_active"}}
       </label>
 
-      <div class="mt-3">
+      <div class="mt-3" data-rule-builder-wrapper>
         <span class="mb-2 block text-xs font-medium text-stone-500 dark:text-stone-400">{{T "rules.conditions_label"}}</span>
         <div data-rule-builder>
           {{template "rule-node" (ruleNodeView .Conditions 1)}}
         </div>
+        <button type="button" data-action="dry-run" data-label-running="{{T "rules.dry_run_running"}}" data-label-failed="{{T "rules.dry_run_failed"}}" data-label-result="{{T "rules.dry_run_result"}}" data-label-no-matches="{{T "rules.dry_run_no_matches"}}" data-label-samples-heading="{{T "rules.dry_run_samples_heading"}}" class="mt-2 rounded border border-stone-300 dark:border-stone-600 px-3 py-1.5 text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700">{{T "rules.dry_run_button"}}</button>
+        <div data-dry-run-result class="mt-2 text-xs text-stone-500 dark:text-stone-400"></div>
       </div>
 
       <div class="mt-3 flex gap-2">

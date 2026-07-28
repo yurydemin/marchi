@@ -355,6 +355,29 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "500": { $ref: "#/components/responses/ServerError" }
 
+  /rules/dry-run:
+    post:
+      tags: [Rules]
+      summary: Test an unsaved condition tree against already-archived emails
+      description: >-
+        Read-only — never creates or modifies a rule. Reconstructs each
+        scanned email's match candidate from persisted emails/attachments
+        rows (no raw .eml re-read), so a rule (especially
+        archive_and_delete) can be sanity-checked before it's ever saved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DryRunRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DryRunResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
   /rules/{id}:
     put:
       tags: [Rules]
@@ -635,6 +658,35 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "404":
           description: Target account not found
+          content: { text/plain: { schema: { type: string } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /restore/bulk:
+    post:
+      tags: [Restore]
+      summary: Restore every email in an entire source account or a single source folder
+      description: >-
+        Unlike `POST /restore`, the caller doesn't select emails
+        individually — every email in scope is resolved server-side. For
+        `scope: "folder"`, every email lands directly in
+        `target_folder_root`. For `scope: "account"`, emails are grouped
+        by their source folder and each group gets its own subfolder
+        under `target_folder_root` (so the source folder structure isn't
+        flattened). Progress over `GET /ws` the same as `POST /restore`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkRestoreRequest" }
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobIDResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404":
+          description: Target account, source account, or source folder not found
           content: { text/plain: { schema: { type: string } } }
         "500": { $ref: "#/components/responses/ServerError" }
 
@@ -1010,6 +1062,30 @@ components:
         action: { type: string, enum: [archive, skip, archive_and_delete, archive_and_mark_read] }
         is_active: { type: boolean }
 
+    DryRunRequest:
+      type: object
+      required: [conditions]
+      properties:
+        conditions: { $ref: "#/components/schemas/RuleNode" }
+        account_id: { type: integer, format: int64, nullable: true, description: "Scope the scan to one account; omit to scan all accounts." }
+        limit: { type: integer, description: "Caps how many archived emails are scanned (default and max 5000)." }
+
+    DryRunResponse:
+      type: object
+      properties:
+        total_scanned: { type: integer }
+        matched_count: { type: integer }
+        samples:
+          type: array
+          description: "Up to 20 matched emails, for a representative preview."
+          items:
+            type: object
+            properties:
+              id: { type: integer, format: int64 }
+              subject: { type: string }
+              from: { type: string }
+              date: { type: string }
+
     S3Settings:
       type: object
       properties:
@@ -1111,6 +1187,15 @@ components:
         email_ids: { type: array, items: { type: integer, format: int64 } }
         target_account_id: { type: integer, format: int64 }
         target_folder: { type: string }
+
+    BulkRestoreRequest:
+      type: object
+      required: [scope, scope_id, target_account_id, target_folder_root]
+      properties:
+        scope: { type: string, enum: [account, folder] }
+        scope_id: { type: integer, format: int64, description: "Source account id (scope=account) or source folder id (scope=folder)." }
+        target_account_id: { type: integer, format: int64 }
+        target_folder_root: { type: string }
 
     RestoreLog:
       type: object
