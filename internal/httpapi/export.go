@@ -3,13 +3,16 @@ package httpapi
 import (
 	"archive/zip"
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/emersion/go-message/mail"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 
@@ -41,7 +44,18 @@ type exportRequest struct {
 	// the first progress event). A server-generated uuid is used if
 	// omitted.
 	JobID string `json:"job_id"`
+	// Format is "zip" (default, when empty) or "mbox" — a single mbox
+	// file instead of a .zip of individual .eml files, for feeding
+	// straight into tools (other mail clients, `mutt -f`, `formail`)
+	// that read mbox natively and would otherwise need every entry
+	// unpacked from the zip first.
+	Format string `json:"format"`
 }
+
+const (
+	exportFormatZip  = "zip"
+	exportFormatMbox = "mbox"
+)
 
 // exportQueryFilter mirrors parseSearchParams' query-string fields as a
 // JSON body — export is a POST whose response body is the .zip itself,
@@ -78,6 +92,13 @@ func handleExport(vault *vaultState) fiber.Handler {
 		if err := c.BodyParser(&req); err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
 		}
+		format := req.Format
+		if format == "" {
+			format = exportFormatZip
+		}
+		if format != exportFormatZip && format != exportFormatMbox {
+			return fiber.NewError(fiber.StatusBadRequest, `format must be "zip" or "mbox"`)
+		}
 
 		emailIDs := req.EmailIDs
 		if len(emailIDs) == 0 && req.Query != nil {
@@ -96,8 +117,12 @@ func handleExport(vault *vaultState) fiber.Handler {
 			jobID = uuid.NewString()
 		}
 
-		c.Set(fiber.HeaderContentType, "application/zip")
-		c.Set(fiber.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="marchi-export-%s.zip"`, time.Now().Format("20060102-150405")))
+		ext, contentType := "zip", "application/zip"
+		if format == exportFormatMbox {
+			ext, contentType = "mbox", "application/mbox"
+		}
+		c.Set(fiber.HeaderContentType, contentType)
+		c.Set(fiber.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="marchi-export-%s.%s"`, time.Now().Format("20060102-150405"), ext))
 		c.Set("X-Job-Id", jobID)
 
 		// context.Background(), not c.Context(): the stream writer below
@@ -107,7 +132,7 @@ func handleExport(vault *vaultState) fiber.Handler {
 		// lifecycle.
 		ctx := context.Background()
 		c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
-			b.streamExport(ctx, w, jobID, emailIDs)
+			b.streamExport(ctx, w, jobID, emailIDs, format)
 		})
 		return nil
 	}
@@ -157,18 +182,24 @@ func resolveExportQuery(ctx context.Context, b *backend, q *exportQueryFilter) (
 	return ids, nil
 }
 
-// streamExport writes a .zip of emailIDs' original .eml content directly
-// to w as each one is read, broadcasting progress over jobID after every
-// attempt. One email's failure (bad id, S3 not configured, a read/write
-// error) is logged into the running error count and skipped rather than
-// aborting the whole export — the same "don't let one bad item sink the
-// batch" philosophy backend.runRestoreAsync follows. Account/folder
-// lookups are cached per export since a batch is typically dominated by
-// a handful of account/folder combinations repeated across many emails.
-func (b *backend) streamExport(ctx context.Context, w *bufio.Writer, jobID string, emailIDs []int64) {
+// streamExport writes emailIDs' original .eml content directly to w as
+// each one is read (as a .zip of individual entries, or concatenated
+// into a single mbox file — see format), broadcasting progress over
+// jobID after every attempt. One email's failure (bad id, S3 not
+// configured, a read/write error) is logged into the running error count
+// and skipped rather than aborting the whole export — the same "don't
+// let one bad item sink the batch" philosophy backend.runRestoreAsync
+// follows. Account/folder lookups are cached per export since a batch is
+// typically dominated by a handful of account/folder combinations
+// repeated across many emails.
+func (b *backend) streamExport(ctx context.Context, w *bufio.Writer, jobID string, emailIDs []int64, format string) {
 	total := len(emailIDs)
 	processed, errCount := 0, 0
-	zw := zip.NewWriter(w)
+
+	var zw *zip.Writer
+	if format == exportFormatZip {
+		zw = zip.NewWriter(w)
+	}
 
 	accountCache := map[int64]*domain.Account{}
 	folderCache := map[int64]*domain.Folder{}
@@ -211,21 +242,100 @@ func (b *backend) streamExport(ctx context.Context, w *bufio.Writer, jobID strin
 			folderCache[e.FolderID] = folder
 		}
 
-		fw, err := zw.Create(exportEntryName(acct.Email, folder.FolderName, e))
-		if err == nil {
-			_, err = fw.Write(content)
+		if format == exportFormatMbox {
+			err = writeMboxEntry(w, e, content)
+		} else {
+			var fw io.Writer
+			fw, err = zw.Create(exportEntryName(acct.Email, folder.FolderName, e))
+			if err == nil {
+				_, err = fw.Write(content)
+			}
 		}
 		if err != nil {
-			fail(id, fmt.Errorf("writing zip entry: %w", err))
+			fail(id, fmt.Errorf("writing export entry: %w", err))
 			continue
 		}
 		_ = w.Flush()
 		b.wsHub.broadcast(exportWSEvent(jobID, processed, total, errCount, false, ""))
 	}
 
-	_ = zw.Close()
+	if zw != nil {
+		_ = zw.Close()
+	}
 	_ = w.Flush()
 	b.wsHub.broadcast(exportWSEvent(jobID, total, total, errCount, true, ""))
+}
+
+// mboxFromLinePattern matches a line that mboxrd-format readers (see
+// internal/importer.WalkMbox, the exact inverse of this) would mistake
+// for the start of the next message: zero or more ">" immediately
+// followed by "From ". writeMboxEntry escapes every such line — whether
+// it's already once-escaped from a previous round-trip or appearing raw
+// for the first time — by adding exactly one more ">", so a reader that
+// undoes a single level of escaping recovers the original byte-for-byte.
+var mboxFromLinePattern = regexp.MustCompile(`^>*From `)
+
+// writeMboxEntry appends one message to an mbox stream: the traditional
+// "From <sender> <date>" envelope line, followed by content with every
+// line matching mboxFromLinePattern escaped, followed by the blank line
+// mbox convention uses to separate messages.
+func writeMboxEntry(w io.Writer, e *domain.Email, content []byte) error {
+	if _, err := fmt.Fprintf(w, "From %s %s\n", mboxEnvelopeSender(e.FromAddr), mboxEnvelopeDate(e.Date)); err != nil {
+		return err
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(content))
+	scanner.Buffer(make([]byte, 64*1024), 64*1024*1024) // a single line up to 64MB
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if mboxFromLinePattern.Match(line) {
+			if _, err := w.Write([]byte{'>'}); err != nil {
+				return err
+			}
+		}
+		if _, err := w.Write(line); err != nil {
+			return err
+		}
+		if _, err := w.Write([]byte{'\n'}); err != nil {
+			return err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("reading message content: %w", err)
+	}
+
+	_, err := w.Write([]byte{'\n'}) // blank line separator before the next message
+	return err
+}
+
+// mboxEnvelopeSender extracts the bare address for the mbox envelope
+// line from full — domain.Email.FromAddr is, despite the field name, the
+// full RFC 5322 mailbox form ("Alice" <a@x.com>), not a bare address
+// (see internal/rules.BuildCandidateFromStored's doc comment for the
+// same gotcha in a different context). A traditional mbox envelope
+// carries a bare address, not a display name, so this re-parses it the
+// same way; MAILER-DAEMON — mbox's own long-standing placeholder for "no
+// real envelope sender available" — covers a missing/unparseable From.
+func mboxEnvelopeSender(full string) string {
+	if full == "" {
+		return "MAILER-DAEMON"
+	}
+	addr, err := mail.ParseAddress(full)
+	if err != nil {
+		return "MAILER-DAEMON"
+	}
+	return addr.Address
+}
+
+// mboxEnvelopeDate formats t (or, if zero, now) in the traditional
+// asctime-ish mbox envelope date form ("Mon Jan  2 15:04:05 2006") —
+// Go's reference layout "_2" is what actually produces the
+// space-padded, non-zero-padded day every mbox reader expects here.
+func mboxEnvelopeDate(t time.Time) string {
+	if t.IsZero() {
+		t = time.Now().UTC()
+	}
+	return t.Format("Mon Jan _2 15:04:05 2006")
 }
 
 // loadEmailContent returns e's raw .eml bytes, lazily loading and

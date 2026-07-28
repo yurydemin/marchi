@@ -3,11 +3,14 @@ package httpapi
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+
+	"github.com/yurydemin/marchi/internal/domain"
 )
 
 // registerRestoreAPI wires the Restore Engine's HTTP surface (FR-RS-01):
@@ -58,6 +61,8 @@ func handleRestore(vault *vaultState) fiber.Handler {
 
 		jobID := uuid.NewString()
 		b.runRestoreAsync(jobID, req.EmailIDs, req.TargetAccountID, req.TargetFolder)
+		b.audit(domain.AuditEventRestore, c.IP(), fmt.Sprintf("Restore triggered: %d email(s) to account #%d, folder %q (job %s)",
+			len(req.EmailIDs), req.TargetAccountID, req.TargetFolder, jobID))
 		return c.Status(fiber.StatusAccepted).JSON(fiber.Map{"job_id": jobID})
 	}
 }
@@ -161,6 +166,8 @@ func handleBulkRestore(vault *vaultState) fiber.Handler {
 
 		jobID := uuid.NewString()
 		b.runRestoreItemsAsync(jobID, items, req.TargetAccountID)
+		b.audit(domain.AuditEventRestore, c.IP(), fmt.Sprintf("Bulk restore triggered: scope=%s scope_id=%d, %d email(s) to account #%d under %q (job %s)",
+			req.Scope, req.ScopeID, len(items), req.TargetAccountID, req.TargetFolderRoot, jobID))
 		return c.Status(fiber.StatusAccepted).JSON(fiber.Map{"job_id": jobID})
 	}
 }

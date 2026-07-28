@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/yurydemin/marchi/internal/domain"
 	"github.com/yurydemin/marchi/internal/mimeparse"
 )
 
@@ -272,6 +273,8 @@ func handleDeleteEmail(vault *vaultState) fiber.Handler {
 			_ = os.Remove(e.LocalPath)
 		}
 		_ = b.currentIndex().Delete(e.ID)
+
+		b.audit(domain.AuditEventEmailDelete, c.IP(), fmt.Sprintf("Deleted email #%d (%q) from the archive", e.ID, e.Subject))
 
 		return c.SendStatus(fiber.StatusNoContent)
 	}

@@ -233,6 +233,36 @@
     </table>
   </div>
 </div>
+
+<div class="mt-8 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 shadow-sm">
+  <h2 class="border-b border-stone-200 dark:border-stone-700 p-6 pb-4 text-sm font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">{{T "settings.audit_log_heading"}}</h2>
+  <div class="overflow-x-auto">
+    <table class="min-w-full divide-y divide-stone-200 dark:divide-stone-700 text-sm">
+      <thead class="bg-stone-50 dark:bg-stone-900 text-left text-xs font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">
+        <tr>
+          <th class="px-4 py-2">{{T "common.date"}}</th>
+          <th class="px-4 py-2">{{T "settings.audit_col_event"}}</th>
+          <th class="px-4 py-2">{{T "settings.audit_col_ip"}}</th>
+          <th class="px-4 py-2">{{T "settings.audit_col_summary"}}</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-stone-200 dark:divide-stone-700">
+        {{if .AuditLog}}
+        {{range .AuditLog}}
+        <tr>
+          <td class="whitespace-nowrap px-4 py-2 text-xs text-stone-500 dark:text-stone-400">{{formatDate .CreatedAt}}</td>
+          <td class="px-4 py-2 text-xs">{{.EventType}}</td>
+          <td class="px-4 py-2 text-xs text-stone-500 dark:text-stone-400">{{if .IP}}{{.IP}}{{else}}&mdash;{{end}}</td>
+          <td class="px-4 py-2">{{.Summary}}</td>
+        </tr>
+        {{end}}
+        {{else}}
+        <tr><td colspan="4" class="px-4 py-6 text-center text-stone-500 dark:text-stone-400">{{T "settings.no_audit_log"}}</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
 {{end}}
 
 {{define "master-key-result"}}{{template "settings-result" .}}{{end}}

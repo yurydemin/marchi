@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -109,6 +111,7 @@ func handleCreateRule(vault *vaultState) fiber.Handler {
 			return fiber.NewError(fiber.StatusInternalServerError, "creating rule failed")
 		}
 		rule.ID = id
+		b.audit(domain.AuditEventRuleCreate, c.IP(), fmt.Sprintf("Created rule #%d %q", rule.ID, rule.Name))
 		return c.Status(fiber.StatusCreated).JSON(ruleResponseFrom(rule))
 	}
 }
@@ -142,8 +145,21 @@ func handleUpdateRule(vault *vaultState) fiber.Handler {
 			}
 			return fiber.NewError(fiber.StatusInternalServerError, "updating rule failed")
 		}
+		b.audit(domain.AuditEventRuleUpdate, c.IP(), fmt.Sprintf("Updated rule #%d %q", rule.ID, rule.Name))
 		return c.JSON(ruleResponseFrom(rule))
 	}
+}
+
+// ruleNameForAudit best-effort resolves id's name for an audit log
+// summary before it's deleted — a failed lookup here (rule already gone,
+// transient DB error) shouldn't block the delete itself, so this just
+// falls back to an empty name rather than returning an error.
+func ruleNameForAudit(ctx context.Context, b *backend, id int64) string {
+	r, err := b.rulesRepo.GetByID(ctx, id)
+	if err != nil {
+		return ""
+	}
+	return r.Name
 }
 
 func handleDeleteRule(vault *vaultState) fiber.Handler {
@@ -156,12 +172,14 @@ func handleDeleteRule(vault *vaultState) fiber.Handler {
 		if err != nil {
 			return err
 		}
+		name := ruleNameForAudit(c.Context(), b, id)
 		if err := b.rulesRepo.Delete(c.Context(), id); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return fiber.NewError(fiber.StatusNotFound, "rule not found")
 			}
 			return fiber.NewError(fiber.StatusInternalServerError, "deleting rule failed")
 		}
+		b.audit(domain.AuditEventRuleDelete, c.IP(), fmt.Sprintf("Deleted rule #%d %q", id, name))
 		return c.SendStatus(fiber.StatusNoContent)
 	}
 }

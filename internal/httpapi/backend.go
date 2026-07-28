@@ -58,6 +58,7 @@ type backend struct {
 	maildirRoot string
 	indexPath   string
 	wsHub       *wsHub
+	logger      *zap.Logger
 
 	accountsRepo    *repo.AccountsRepo
 	foldersRepo     *repo.FoldersRepo
@@ -76,6 +77,7 @@ type backend struct {
 	// the global retention default (FR-RE-04).
 	retentionSettingsRepo *repo.RetentionSettingsRepo
 	restoreLogsRepo       *repo.RestoreLogsRepo
+	auditLogRepo          *repo.AuditLogRepo
 	manager               *account.Manager
 	// oauth2ConfigManager wraps oauth2_apps with the shared credential
 	// subkey (FR-AM-01's BYO app model, Phase 3 step 13/14) — feeds both
@@ -210,6 +212,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, dek []byte, hub *wsHub) 
 		maildirRoot:              cfg.Storage.MaildirPath,
 		indexPath:                cfg.Search.IndexPath,
 		wsHub:                    hub,
+		logger:                   logger,
 		accountsRepo:             accountsRepo,
 		foldersRepo:              repo.NewFoldersRepo(sqlDB, w),
 		emailsRepo:               repo.NewEmailsRepo(sqlDB, w),
@@ -221,6 +224,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, dek []byte, hub *wsHub) 
 		s3ConfigManager:          s3ConfigMgr,
 		retentionSettingsRepo:    retentionSettingsRepo,
 		restoreLogsRepo:          repo.NewRestoreLogsRepo(sqlDB, w),
+		auditLogRepo:             repo.NewAuditLogRepo(sqlDB, w),
 		manager:                  mgr,
 		oauth2AppsRepo:           oauth2AppsRepo,
 		oauth2ConfigMgr:          oauth2ConfigMgr,
@@ -481,6 +485,20 @@ func (b *backend) runRestoreItemsAsync(jobID string, items []restoreItem, target
 		}
 		b.wsHub.broadcast(restoreWSEvent(jobID, total, total, succeeded, failed, true, ""))
 	}()
+}
+
+// audit records one audit_log entry, best-effort: a logging failure must
+// never fail (or even slow down the caller's response with a retry) the
+// actual action it's recording — the same reasoning search indexing's
+// own best-effort contract already follows elsewhere (see
+// internal/sync.ArchiveOne's doc comment). context.Background(), not a
+// request-scoped context, since this can be called from
+// runRestoreItemsAsync's detached background goroutine, which has no
+// request context of its own to use.
+func (b *backend) audit(eventType domain.AuditEventType, ip, summary string) {
+	if err := b.auditLogRepo.Insert(context.Background(), eventType, ip, summary); err != nil {
+		b.logger.Error("writing audit log entry failed", zap.String("event_type", string(eventType)), zap.Error(err))
+	}
 }
 
 // close stops the scheduler, waits for any detached background job

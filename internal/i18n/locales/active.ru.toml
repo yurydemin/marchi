@@ -251,6 +251,11 @@
 "settings.col_archived" = "Заархивировано"
 "settings.col_errors" = "Ошибок"
 "settings.no_sync_runs" = "Синхронизаций пока не было."
+"settings.audit_log_heading" = "Аудит-лог"
+"settings.audit_col_event" = "Событие"
+"settings.audit_col_ip" = "IP"
+"settings.audit_col_summary" = "Описание"
+"settings.no_audit_log" = "Записей аудит-лога пока нет."
 
 "settings.result.master_key_changed" = "Master Key изменён. Используйте новый пароль при следующей разблокировке."
 "settings.result.current_password_incorrect" = "текущий пароль неверен"

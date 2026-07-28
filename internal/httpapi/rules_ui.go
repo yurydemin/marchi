@@ -170,9 +170,11 @@ func handleRulesCreate(vault *vaultState, store *session.Store, pages map[string
 			Name: req.Name, Priority: len(existing), Conditions: conditions, Action: action,
 			IsActive: req.IsActive,
 		}
-		if _, err := b.rulesRepo.Create(c.Context(), rule); err != nil {
+		id, err := b.rulesRepo.Create(c.Context(), rule)
+		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "creating rule failed")
 		}
+		b.audit(domain.AuditEventRuleCreate, c.IP(), fmt.Sprintf("Created rule #%d %q", id, rule.Name))
 
 		return renderRuleRows(c, b, pages)
 	}
@@ -258,6 +260,7 @@ func handleRulesUpdate(vault *vaultState, store *session.Store, pages map[string
 			}
 			return fiber.NewError(fiber.StatusInternalServerError, "updating rule failed")
 		}
+		b.audit(domain.AuditEventRuleUpdate, c.IP(), fmt.Sprintf("Updated rule #%d %q", rule.ID, rule.Name))
 		return renderRuleRows(c, b, pages)
 	}
 }
@@ -272,12 +275,14 @@ func handleRulesDelete(vault *vaultState, store *session.Store, pages map[string
 		if err != nil {
 			return err
 		}
+		name := ruleNameForAudit(c.Context(), b, id)
 		if err := b.rulesRepo.Delete(c.Context(), id); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return fiber.NewError(fiber.StatusNotFound, "rule not found")
 			}
 			return fiber.NewError(fiber.StatusInternalServerError, "deleting rule failed")
 		}
+		b.audit(domain.AuditEventRuleDelete, c.IP(), fmt.Sprintf("Deleted rule #%d %q", id, name))
 		return renderRuleRows(c, b, pages)
 	}
 }

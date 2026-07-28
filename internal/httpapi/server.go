@@ -88,6 +88,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 		MaxAge: 3600,
 	}))
 
+	registerHealthz(app)
 	registerLangSwitch(app)
 	registerUnlock(app, cfg, logger, vault, store)
 	registerSearch(app, vault)
@@ -104,7 +105,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
 	registerLogs(app, vault)
 	registerAdmin(app, vault)
 	registerWS(app, hub)
-	registerMetrics(app, vault)
+	registerMetrics(app, vault, cfg.Security.MetricsToken)
 	registerPages(app, vault, store, pages)
 	registerAccountsPage(app, vault, store, pages)
 	registerArchivePage(app, vault, store, pages)

@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/yurydemin/marchi/internal/config"
+	"github.com/yurydemin/marchi/internal/domain"
 	"github.com/yurydemin/marchi/internal/security/masterkey"
 )
 
@@ -36,10 +37,20 @@ type unlockRequest struct {
 // own unlock flow), marks the vault unlocked process-wide, and grants the
 // requesting browser its own session.
 func registerUnlock(app *fiber.App, cfg *config.Config, logger *zap.Logger, vault *vaultState, store *session.Store) {
+	lockout := newUnlockLockout()
+
 	app.Post("/unlock", limiter.New(limiter.Config{
 		Max:        unlockRateLimit,
 		Expiration: time.Minute,
 	}), func(c *fiber.Ctx) error {
+		ip := c.IP()
+		if until, locked := lockout.lockedUntil(ip); locked {
+			logger.Warn("unlock attempt rejected: ip is locked out after repeated failures",
+				zap.String("ip", ip), zap.Time("locked_until", until))
+			c.Set(fiber.HeaderRetryAfter, fmt.Sprint(int(time.Until(until).Seconds())))
+			return fiber.NewError(fiber.StatusTooManyRequests, "too many failed unlock attempts; try again later")
+		}
+
 		var req unlockRequest
 		if err := c.BodyParser(&req); err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
@@ -58,14 +69,18 @@ func registerUnlock(app *fiber.App, cfg *config.Config, logger *zap.Logger, vaul
 		case errors.Is(err, masterkey.ErrPasswordTooShort):
 			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		default:
-			logger.Warn("web unlock attempt failed", zap.Error(err), zap.String("ip", c.IP()))
+			lockout.recordFailure(ip)
+			logger.Warn("web unlock attempt failed", zap.Error(err), zap.String("ip", ip))
 			return fiber.NewError(fiber.StatusUnauthorized, "incorrect password")
 		}
 
-		if _, err := vault.unlock(dek); err != nil {
+		back, err := vault.unlock(dek)
+		if err != nil {
 			logger.Error("unlocking vault failed", zap.Error(err))
 			return fiber.NewError(fiber.StatusInternalServerError, "unlock failed")
 		}
+		lockout.recordSuccess(ip)
+		back.audit(domain.AuditEventUnlock, ip, "Vault unlocked via web session")
 
 		sess, err := store.Get(c)
 		if err != nil {
@@ -76,7 +91,7 @@ func registerUnlock(app *fiber.App, cfg *config.Config, logger *zap.Logger, vaul
 			return fmt.Errorf("httpapi: saving session: %w", err)
 		}
 
-		logger.Info("web session unlocked", zap.String("ip", c.IP()))
+		logger.Info("web session unlocked", zap.String("ip", ip))
 		return c.JSON(fiber.Map{"status": "unlocked"})
 	})
 }

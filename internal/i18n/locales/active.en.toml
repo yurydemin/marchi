@@ -257,6 +257,11 @@
 "settings.col_archived" = "Archived"
 "settings.col_errors" = "Errors"
 "settings.no_sync_runs" = "No sync runs yet."
+"settings.audit_log_heading" = "Audit Log"
+"settings.audit_col_event" = "Event"
+"settings.audit_col_ip" = "IP"
+"settings.audit_col_summary" = "Summary"
+"settings.no_audit_log" = "No audit log entries yet."
 
 "settings.result.master_key_changed" = "Master Key changed. Use the new password next time you unlock."
 "settings.result.current_password_incorrect" = "current password is incorrect"

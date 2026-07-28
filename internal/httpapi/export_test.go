@@ -13,6 +13,7 @@ import (
 
 	"github.com/yurydemin/marchi/internal/account"
 	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/importer"
 	"github.com/yurydemin/marchi/internal/search"
 )
 
@@ -97,7 +98,7 @@ func TestStreamExport_LocalEmails_ProducesValidZipWithExpectedEntries(t *testing
 
 	var buf bytes.Buffer
 	w := bufio.NewWriter(&buf)
-	b.streamExport(context.Background(), w, "test-job", []int64{id1, id2})
+	b.streamExport(context.Background(), w, "test-job", []int64{id1, id2}, exportFormatZip)
 	if err := w.Flush(); err != nil {
 		t.Fatalf("flushing: %v", err)
 	}
@@ -162,7 +163,7 @@ func TestStreamExport_UnknownEmailID_SkipsItAndStillExportsTheRest(t *testing.T)
 
 	var buf bytes.Buffer
 	w := bufio.NewWriter(&buf)
-	b.streamExport(context.Background(), w, "test-job", []int64{999999, id})
+	b.streamExport(context.Background(), w, "test-job", []int64{999999, id}, exportFormatZip)
 	if err := w.Flush(); err != nil {
 		t.Fatalf("flushing: %v", err)
 	}
@@ -196,5 +197,100 @@ func TestResolveExportQuery_MatchesSearchIndex(t *testing.T) {
 	}
 	if len(ids) != 1 || ids[0] != 101 {
 		t.Errorf("ids = %v, want exactly [101]", ids)
+	}
+}
+
+// TestStreamExport_Mbox_ProducesReadableMultiMessageFile confirms the
+// mbox format writes both messages into one stream with proper "From "
+// envelope separators — the actual demo criterion is that
+// internal/importer.WalkMbox (the exact inverse of this) reads back the
+// same number of messages with the same headers/body, so this exercises
+// both sides together as a real round trip.
+func TestStreamExport_Mbox_ProducesReadableMultiMessageFile(t *testing.T) {
+	b := newTestBackend(t)
+	id1 := seedExportEmail(t, b, "alice@example.com", "INBOX", "First message", "<msg1@example.com>", "Body one.\r\n")
+	id2 := seedExportEmail(t, b, "bob@example.com", "Archive", "Second message", "<msg2@example.com>", "Body two.\r\n")
+
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+	b.streamExport(context.Background(), w, "test-job", []int64{id1, id2}, exportFormatMbox)
+	if err := w.Flush(); err != nil {
+		t.Fatalf("flushing: %v", err)
+	}
+
+	dir := t.TempDir()
+	mboxPath := filepath.Join(dir, "export.mbox")
+	if err := os.WriteFile(mboxPath, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var got []string
+	if err := importer.WalkMbox(mboxPath, func(raw []byte) error {
+		got = append(got, string(raw))
+		return nil
+	}); err != nil {
+		t.Fatalf("WalkMbox reading the export back: %v", err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("WalkMbox found %d messages, want 2: %q", len(got), got)
+	}
+	if !strings.Contains(got[0], "Message-ID: <msg1@example.com>") || !strings.Contains(got[0], "Body one.") {
+		t.Errorf("first message = %q, missing expected content", got[0])
+	}
+	if !strings.Contains(got[1], "Message-ID: <msg2@example.com>") || !strings.Contains(got[1], "Body two.") {
+		t.Errorf("second message = %q, missing expected content", got[1])
+	}
+}
+
+// TestWriteMboxEntry_EscapesFromLinesInBody guards the exact reason a
+// naive concatenation into mbox would corrupt data: a message whose own
+// body has a line starting with "From " (a quoted forwarded message, for
+// instance) must come back out through WalkMbox as one message with that
+// line intact, not silently split into two.
+func TestWriteMboxEntry_EscapesFromLinesInBody(t *testing.T) {
+	e := &domain.Email{FromAddr: "a@example.com"}
+	content := []byte("Subject: quoted\r\n\r\nFrom the desk of Bob:\r\nHello.\r\n")
+
+	var buf bytes.Buffer
+	if err := writeMboxEntry(&buf, e, content); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(buf.String(), ">From the desk of Bob:") {
+		t.Errorf("output = %q, want the in-body \"From \" line escaped with a leading \">\"", buf.String())
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "escaped.mbox")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	if err := importer.WalkMbox(path, func(raw []byte) error {
+		got = append(got, string(raw))
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("WalkMbox found %d messages, want 1 (the body's From line must not be mistaken for an envelope)", len(got))
+	}
+	if !strings.Contains(got[0], "From the desk of Bob:") || strings.Contains(got[0], ">From the desk of Bob:") {
+		t.Errorf("round-tripped message = %q, want the escape stripped back off by the reader", got[0])
+	}
+}
+
+func TestMboxEnvelopeSender_ExtractsBareAddress(t *testing.T) {
+	tests := []struct{ full, want string }{
+		{`"Alice" <alice@example.com>`, "alice@example.com"},
+		{"bob@example.com", "bob@example.com"},
+		{"", "MAILER-DAEMON"},
+		{"not a valid address at all @@@", "MAILER-DAEMON"},
+	}
+	for _, tt := range tests {
+		if got := mboxEnvelopeSender(tt.full); got != tt.want {
+			t.Errorf("mboxEnvelopeSender(%q) = %q, want %q", tt.full, got, tt.want)
+		}
 	}
 }

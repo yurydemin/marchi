@@ -44,6 +44,15 @@ type settingsPageData struct {
 	Retention           retentionSettingsResponse
 
 	SyncLogs []syncLogEntryResponse
+
+	AuditLog []auditLogEntryResponse
+}
+
+type auditLogEntryResponse struct {
+	CreatedAt time.Time
+	EventType string
+	IP        string
+	Summary   string
 }
 
 func registerSettingsPage(app *fiber.App, cfg *config.Config, vault *vaultState, store *session.Store, pages map[string]*template.Template) {
@@ -148,8 +157,25 @@ func loadSettingsPageData(c *fiber.Ctx, b *backend) (settingsPageData, error) {
 		}
 	}
 
+	auditEntries, err := b.auditLogRepo.List(c.Context(), settingsAuditLogLimit)
+	if err != nil {
+		return data, fiber.NewError(fiber.StatusInternalServerError, "loading audit log failed")
+	}
+	data.AuditLog = make([]auditLogEntryResponse, len(auditEntries))
+	for i, e := range auditEntries {
+		data.AuditLog[i] = auditLogEntryResponse{
+			CreatedAt: e.CreatedAt, EventType: string(e.EventType), IP: e.IP, Summary: e.Summary,
+		}
+	}
+
 	return data, nil
 }
+
+// settingsAuditLogLimit caps the Settings UI's audit log viewer at the
+// most recent entries — a review/investigation screen has no need for
+// arbitrary paging, just "what happened recently" (see
+// AuditLogRepo.List's own doc comment for the same reasoning).
+const settingsAuditLogLimit = 50
 
 // settingsResult is every settings form's shared result-fragment shape:
 // a success message, or an error message — never both.

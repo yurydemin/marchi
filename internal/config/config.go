@@ -48,6 +48,16 @@ type TLSConfig struct {
 type SecurityConfig struct {
 	MasterKeyEnv string       `yaml:"master_key_env"`
 	Argon2       Argon2Config `yaml:"argon2"`
+	// MetricsToken, if set, requires GET /metrics requests to carry
+	// "Authorization: Bearer <token>" matching it — empty (the default)
+	// leaves /metrics open to any caller who can reach it at all, same as
+	// before this option existed. There's no env_var-name-of-an-env-var
+	// indirection like MasterKeyEnv has: unlike the Master Key, this
+	// token isn't derived from anything the operator must already keep
+	// secret elsewhere, so a plain MARCHI_METRICS_TOKEN env override
+	// (below) is enough for anyone who'd rather not put it in
+	// config.yaml.
+	MetricsToken string `yaml:"metrics_token"`
 }
 
 // Argon2Config mirrors the tuning parameters from tech-spec §8.1. Memory is in KiB.
@@ -188,6 +198,10 @@ var envOverrides = []struct {
 	}},
 	{"MARCHI_LOG_OUTPUT", func(c *Config, v string) error {
 		c.App.LogOutput = v
+		return nil
+	}},
+	{"MARCHI_METRICS_TOKEN", func(c *Config, v string) error {
+		c.Security.MetricsToken = v
 		return nil
 	}},
 }

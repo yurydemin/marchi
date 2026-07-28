@@ -2,9 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"crypto/subtle"
 	"database/sql"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -54,14 +56,44 @@ func httpMetricsMiddleware(c *fiber.Ctx) error {
 // (Go runtime, HTTP latency) are always present; archiveCollector's
 // business gauges just report marchi_unlocked=0 and nothing else while
 // locked, which Prometheus surfaces as an absent series, not a zero.
-func registerMetrics(app *fiber.App, vault *vaultState) {
+//
+// metricsToken, if non-empty (config.SecurityConfig.MetricsToken),
+// requires a matching "Authorization: Bearer <token>" header — /metrics
+// has none of the session/CSRF protection every other authenticated
+// surface here gets (a scrape target can't do a browser login dance),
+// and it does leak operationally-sensitive detail (account counts, sync
+// health, storage volume) to anyone who can reach the port, so an
+// operator exposing it beyond localhost/a trusted scrape network has an
+// opt-in way to close that off without standing up a reverse-proxy just
+// for this one path.
+func registerMetrics(app *fiber.App, vault *vaultState, metricsToken string) {
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collectors.NewGoCollector())
 	reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	reg.MustRegister(httpRequestDuration)
 	reg.MustRegister(newArchiveCollector(vault))
 
-	app.Get("/metrics", adaptor.HTTPHandler(promhttp.HandlerFor(reg, promhttp.HandlerOpts{})))
+	handler := adaptor.HTTPHandler(promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	if metricsToken == "" {
+		app.Get("/metrics", handler)
+		return
+	}
+	app.Get("/metrics", metricsAuthMiddleware(metricsToken), handler)
+}
+
+// metricsAuthMiddleware enforces the bearer token in constant time
+// (subtle.ConstantTimeCompare) — the same reasoning as any other secret
+// comparison against attacker-controlled input: a naive == would leak
+// how many leading bytes matched through response timing.
+func metricsAuthMiddleware(token string) fiber.Handler {
+	want := []byte(token)
+	return func(c *fiber.Ctx) error {
+		got, ok := strings.CutPrefix(c.Get(fiber.HeaderAuthorization), "Bearer ")
+		if !ok || subtle.ConstantTimeCompare([]byte(got), want) != 1 {
+			return fiber.NewError(fiber.StatusUnauthorized, "invalid or missing bearer token")
+		}
+		return c.Next()
+	}
 }
 
 // archiveCollector reads every business metric fresh from the repos at

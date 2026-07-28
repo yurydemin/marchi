@@ -693,13 +693,14 @@ paths:
   /export:
     post:
       tags: [Export]
-      summary: Export archived emails as a .zip of their original .eml files
+      summary: Export archived emails as a .zip or a single mbox file
       description: >-
-        Streams a zip synchronously as the response body — this is not a
-        background job with a polled result, though progress is still
-        broadcast over `GET /ws` (`type: "export"`) while it streams.
-        Either `email_ids` or `query` must resolve at least one email;
-        `query`-based export is capped at 5000 results.
+        Streams the archive (zip or mbox — see `format`) synchronously as
+        the response body — this is not a background job with a polled
+        result, though progress is still broadcast over `GET /ws`
+        (`type: "export"`) while it streams. Either `email_ids` or
+        `query` must resolve at least one email; `query`-based export is
+        capped at 5000 results.
       requestBody:
         required: true
         content:
@@ -707,13 +708,15 @@ paths:
             schema: { $ref: "#/components/schemas/ExportRequest" }
       responses:
         "200":
-          description: The zip archive
+          description: The exported archive — Content-Type is application/zip or application/mbox depending on the request's format.
           headers:
             X-Job-Id:
               schema: { type: string }
               description: Correlates with `GET /ws` progress events for this export.
           content:
             application/zip:
+              schema: { type: string, format: binary }
+            application/mbox:
               schema: { type: string, format: binary }
         "400": { $ref: "#/components/responses/BadRequest" }
 
@@ -827,7 +830,11 @@ paths:
         The only endpoint reachable without a session. Verifies the Master
         Key password (bootstrapping the vault on first run), unlocks it
         process-wide, and sets a session cookie for this browser. Rate
-        limited to 100 requests/minute.
+        limited to 100 requests/minute; additionally, a source IP is
+        locked out for 15 minutes after 10 failed attempts (`429`,
+        `Retry-After` header carries the remaining seconds) — a
+        narrower, failure-specific defense on top of the blanket rate
+        limit above.
       security: []
       requestBody:
         required: true
@@ -847,6 +854,13 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401":
           description: Incorrect password
+          content: { text/plain: { schema: { type: string } } }
+        "429":
+          description: Too many failed attempts from this IP; locked out
+          headers:
+            Retry-After:
+              schema: { type: integer }
+              description: Seconds until the lockout expires.
           content: { text/plain: { schema: { type: string } } }
         "500": { $ref: "#/components/responses/ServerError" }
 
@@ -1216,6 +1230,16 @@ components:
         email_ids: { type: array, items: { type: integer, format: int64 } }
         query: { $ref: "#/components/schemas/ExportQueryFilter" }
         job_id: { type: string, description: Optional — the server generates one if omitted. }
+        format:
+          type: string
+          enum: [zip, mbox]
+          default: zip
+          description: >-
+            "zip" (default) — one .eml file per email, laid out
+            {account_email}/{folder}/{YYYY-MM}/{Subject}-{MessageID}.eml.
+            "mbox" — every email concatenated into a single mbox file
+            (mboxrd "From "-line escaping), for tools that read mbox
+            natively.
 
     ExportQueryFilter:
       type: object
