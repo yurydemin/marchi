@@ -49,7 +49,7 @@ func countBodyMatches(t *testing.T, idx *search.Index, term string) int {
 
 // TestFetchNewMessages_IndexesArchivedMessages exercises the best-effort
 // search-index integration end to end: a real *search.Index is threaded
-// through FetchNewMessages -> archiveOne, and the archived message's body
+// through FetchNewMessages -> ArchiveOne, and the archived message's body
 // text should actually be searchable afterward (FR-SR-01/02).
 func TestFetchNewMessages_IndexesArchivedMessages(t *testing.T) {
 	env := newFetchTestEnv(t)
@@ -125,10 +125,10 @@ func TestFetchNewMessages_NilIndex_SkipsIndexingWithoutError(t *testing.T) {
 }
 
 // TestFetchNewMessages_IndexWriteFails_ArchivalStillSucceeds is the core
-// best-effort guarantee (see archiveOne's doc comment): a broken search
+// best-effort guarantee (see ArchiveOne's doc comment): a broken search
 // index must never block or fail archival. Simulated here by handing in
 // an already-closed *search.Index, so every Index() call inside
-// archiveOne fails.
+// ArchiveOne fails.
 func TestFetchNewMessages_IndexWriteFails_ArchivalStillSucceeds(t *testing.T) {
 	env := newFetchTestEnv(t)
 	idx, err := search.Open(filepath.Join(t.TempDir(), "index"))

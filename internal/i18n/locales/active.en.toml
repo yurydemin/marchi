@@ -286,6 +286,7 @@
 "cli.reindex.short" = "Rebuild the full-text search index from the local .eml archive (FR-SR-04)"
 "cli.retention.short" = "Manage the archive's retention lifecycle (FR-RE-04)"
 "cli.retention_run.short" = "Run one retention pass now (Stage A->B->C, FR-RE-04)"
+"cli.import.short" = "Import mail from an mbox file, a Maildir folder, or a directory of .eml files"
 "cli.backup.short" = "Back up the database, Maildir, and Master Key material"
 "cli.backup_run.short" = "Write a full backup into a fresh directory"
 "cli.backup_verify.short" = "Verify a backup's checksums and database integrity"

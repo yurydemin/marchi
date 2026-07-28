@@ -66,7 +66,11 @@ type Account struct {
 	OAuth2Provider        string // "google", "microsoft", or "" for none
 	OAuth2TokenEncrypted  []byte
 	IsActive              bool
-	SyncCron              string // FR-SE-06: cron expression; "" means "use sync.default_schedule"
+	// IsImported marks an account created by `marchi import` — it has no
+	// real IMAP credentials to connect with (see the migration that added
+	// this column for why it's distinct from IsActive).
+	IsImported bool
+	SyncCron   string // FR-SE-06: cron expression; "" means "use sync.default_schedule"
 	// RetentionLocalDays/RetentionMoveToS3Days/RetentionS3Days override
 	// this account's retention policy (FR-RE-04); nil means "inherit the
 	// global default" (repo.RetentionSettingsRepo), the same nil-means-

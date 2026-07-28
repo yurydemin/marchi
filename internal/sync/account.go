@@ -33,7 +33,7 @@ type FolderResult struct {
 // maildirRoot (config.yaml's storage.maildir_path). host names the Maildir
 // filename's hostname component (see maildir.NewWriter). idx, if non-nil,
 // gets each newly-archived email indexed for search (FR-SR-01/02) on a
-// best-effort basis — see archiveOne's doc comment for why that can't be
+// best-effort basis — see ArchiveOne's doc comment for why that can't be
 // stronger than best-effort. onProgress, if non-nil, is called after every
 // message archived or failed (FR-SE-07) — see FetchNewMessages.
 //
@@ -68,7 +68,7 @@ func SyncAccount(
 	attachmentsRepo *repo.AttachmentsRepo,
 	syncLogsRepo *repo.SyncLogsRepo,
 	rulesRepo *repo.RulesRepo, // nil skips Rule Engine dispatch entirely — every message defaults to archive (FR-RE-03)
-	idx *search.Index, // nil skips search indexing entirely — see FetchNewMessages/archiveOne
+	idx *search.Index, // nil skips search indexing entirely — see FetchNewMessages/ArchiveOne
 	// s3ConfigRepo/s3QueueRepo, if both non-nil, are checked once per
 	// run (like activeRules below) — S3 mirroring only actually happens
 	// if s3_config exists and is Enabled (FR-S3-03). Either being nil

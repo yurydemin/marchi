@@ -13,7 +13,7 @@ import (
 
 // TestFetchNewMessages_S3Mirror_EnqueuesAndUploadsToRealMinIO is Phase 3
 // step 7's demo criterion: sync a test mailbox with S3 mirroring enabled
-// and confirm the archived email is actually in S3 — archiveOne enqueues
+// and confirm the archived email is actually in S3 — ArchiveOne enqueues
 // it (FR-S3-03), and internal/s3store.Uploader drains the queue against a
 // real MinIO container.
 func TestFetchNewMessages_S3Mirror_EnqueuesAndUploadsToRealMinIO(t *testing.T) {

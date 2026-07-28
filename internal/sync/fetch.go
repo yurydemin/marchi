@@ -54,7 +54,7 @@ type FetchStats struct {
 	Bytes      int64
 	Errors     int
 	// IndexErrors counts search-index (Bluge) write failures — best-effort
-	// (see archiveOne's doc comment): the email is still fully archived
+	// (see ArchiveOne's doc comment): the email is still fully archived
 	// and this never contributes to Errors or stops the sync. A reindex
 	// (FR-SR-04) is the recovery path if this is ever nonzero.
 	IndexErrors int
@@ -99,8 +99,8 @@ func FetchNewMessages(
 	emailsRepo *repo.EmailsRepo,
 	foldersRepo *repo.FoldersRepo,
 	attachmentsRepo *repo.AttachmentsRepo,
-	idx *search.Index, // nil skips indexing entirely — see archiveOne
-	s3Queue *repo.S3UploadQueueRepo, // nil skips S3 mirror enqueueing entirely (FR-S3-03) — see archiveOne
+	idx *search.Index, // nil skips indexing entirely — see ArchiveOne
+	s3Queue *repo.S3UploadQueueRepo, // nil skips S3 mirror enqueueing entirely (FR-S3-03) — see ArchiveOne
 	activeRules []*domain.Rule, // nil/empty: every message defaults to archive (FR-RE-03)
 	onProgress ProgressFunc, // nil skips progress reporting entirely (FR-SE-07)
 ) (stats FetchStats, err error) {
@@ -148,7 +148,7 @@ func FetchNewMessages(
 		}
 		// Graceful shutdown (NFR-RL-05): stop starting new work once a
 		// SIGINT/SIGTERM has been requested, but don't interrupt whatever
-		// archiveOne call might already be in flight — Single Writer's own
+		// ArchiveOne call might already be in flight — Single Writer's own
 		// Close() (called during the CLI command's unwind) already waits
 		// for that one to finish rather than cutting it off mid-write.
 		if ctx.Err() != nil {
@@ -196,7 +196,7 @@ func FetchNewMessages(
 		// most commonly a restored email reappearing under a new UID once
 		// this sync fetches it back. A blank Message-ID (malformed or
 		// missing header) never counts as a duplicate of anything —
-		// archiveOne synthesizes a UID-derived placeholder for those, so
+		// ArchiveOne synthesizes a UID-derived placeholder for those, so
 		// treating "" as a real value here would make every such message
 		// after the first look like a repeat of it.
 		if md.MessageID != "" {
@@ -231,7 +231,7 @@ func FetchNewMessages(
 			}
 		}
 
-		archivedBytes, indexErr, archErr := archiveOne(ctx, raw, md, attachments, msg.Uid, msg.Flags, accountID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx, s3Queue)
+		archivedBytes, indexErr, archErr := ArchiveOne(ctx, raw, md, attachments, msg.Uid, msg.Flags, accountID, folder, mw, w, emailsRepo, foldersRepo, attachmentsRepo, idx, s3Queue)
 		if archErr != nil {
 			stats.Errors++
 			firstErr = fmt.Errorf("sync: archiving UID %d in %q: %w", msg.Uid, folder.FolderName, archErr)
@@ -291,7 +291,7 @@ func applyPostArchiveRuleAction(c *client.Client, action domain.RuleAction, uid 
 }
 
 // parseMessage reads msg's full body and extracts the metadata/attachment
-// list archiveOne needs to persist it and FirstMatch needs to evaluate
+// list ArchiveOne needs to persist it and FirstMatch needs to evaluate
 // rules against it — done once per message up front so a "skip" verdict
 // never touches Maildir/SQL/the index at all.
 func parseMessage(msg *imap.Message, section *imap.BodySectionName) (raw []byte, md mimeparse.Metadata, attachments []mimeparse.Attachment, err error) {
@@ -339,10 +339,17 @@ func skipOne(ctx context.Context, w writer.Writer, foldersRepo *repo.FoldersRepo
 	})
 }
 
-// archiveOne implements NFR-RL-03's atomicity contract for a single
+// ArchiveOne implements NFR-RL-03's atomicity contract for a single
 // message: stage the raw bytes into Maildir tmp/, commit it into new/, and
 // only then insert the emails row and advance folders.last_uid in one
 // Single-Writer transaction.
+//
+// Exported (not just used internally by FetchNewMessages) because nothing
+// here is actually IMAP-specific — uid/flags are just whatever the caller
+// already has on hand. internal/importer reuses it as-is for
+// mbox/Maildir/.eml import, passing a synthetic, monotonically increasing
+// uid in place of a real IMAP UID and nil flags (imported messages have no
+// live IMAP session to have flagged them).
 //
 // This order — Maildir commit before the SQL write — is deliberately the
 // reverse of an earlier draft (staging in tmp/ was always going to precede
@@ -380,7 +387,7 @@ func skipOne(ctx context.Context, w writer.Writer, foldersRepo *repo.FoldersRepo
 // together, or neither is, rather than being merely best-effort like the
 // index write has to be. The actual upload happens later, out of band,
 // in the Uploader worker pool (internal/s3store).
-func archiveOne(
+func ArchiveOne(
 	ctx context.Context,
 	raw []byte,
 	md mimeparse.Metadata,

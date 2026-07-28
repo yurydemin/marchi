@@ -46,12 +46,12 @@ func (r *AccountsRepo) Create(ctx context.Context, a *domain.Account) (int64, er
 			INSERT INTO accounts (
 				email, display_name, imap_host, imap_port, imap_tls,
 				imap_username, imap_password_encrypted,
-				oauth2_provider, oauth2_token_encrypted, is_active,
+				oauth2_provider, oauth2_token_encrypted, is_active, is_imported,
 				retention_local_days, retention_move_to_s3_days, retention_s3_days
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			a.Email, nullIfEmpty(a.DisplayName), a.IMAPHost, a.IMAPPort, int(a.IMAPTLS),
 			nullIfEmpty(a.IMAPUsername), a.IMAPPasswordEncrypted,
-			nullIfEmpty(a.OAuth2Provider), a.OAuth2TokenEncrypted, boolToInt(a.IsActive),
+			nullIfEmpty(a.OAuth2Provider), a.OAuth2TokenEncrypted, boolToInt(a.IsActive), boolToInt(a.IsImported),
 			nullIfZeroPtr(a.RetentionLocalDays), nullIfZeroPtr(a.RetentionMoveToS3Days), nullIfZeroPtr(a.RetentionS3Days),
 		)
 		if err != nil {
@@ -148,7 +148,7 @@ func (r *AccountsRepo) List(ctx context.Context) ([]*domain.Account, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, email, display_name, imap_host, imap_port, imap_tls,
 		       imap_username, imap_password_encrypted,
-		       oauth2_provider, oauth2_token_encrypted, is_active, sync_cron,
+		       oauth2_provider, oauth2_token_encrypted, is_active, is_imported, sync_cron,
 		       retention_local_days, retention_move_to_s3_days, retention_s3_days,
 		       created_at, updated_at
 		FROM accounts ORDER BY id`)
@@ -173,7 +173,7 @@ func (r *AccountsRepo) GetByID(ctx context.Context, id int64) (*domain.Account, 
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, email, display_name, imap_host, imap_port, imap_tls,
 		       imap_username, imap_password_encrypted,
-		       oauth2_provider, oauth2_token_encrypted, is_active, sync_cron,
+		       oauth2_provider, oauth2_token_encrypted, is_active, is_imported, sync_cron,
 		       retention_local_days, retention_move_to_s3_days, retention_s3_days,
 		       created_at, updated_at
 		FROM accounts WHERE id = ?`, id)
@@ -185,7 +185,7 @@ func (r *AccountsRepo) GetByEmail(ctx context.Context, email string) (*domain.Ac
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, email, display_name, imap_host, imap_port, imap_tls,
 		       imap_username, imap_password_encrypted,
-		       oauth2_provider, oauth2_token_encrypted, is_active, sync_cron,
+		       oauth2_provider, oauth2_token_encrypted, is_active, is_imported, sync_cron,
 		       retention_local_days, retention_move_to_s3_days, retention_s3_days,
 		       created_at, updated_at
 		FROM accounts WHERE email = ?`, email)
@@ -204,14 +204,14 @@ func scanAccount(row rowScanner) (*domain.Account, error) {
 		oauth2Provider                                 sql.NullString
 		syncCron                                       sql.NullString
 		retentionLocal, retentionMoveToS3, retentionS3 sql.NullInt64
-		isActive                                       int
+		isActive, isImported                           int
 		imapTLS                                        int
 		createdAt, updatedAt                           string
 	)
 	err := row.Scan(
 		&a.ID, &a.Email, &displayName, &a.IMAPHost, &a.IMAPPort, &imapTLS,
 		&imapUser, &a.IMAPPasswordEncrypted,
-		&oauth2Provider, &a.OAuth2TokenEncrypted, &isActive, &syncCron,
+		&oauth2Provider, &a.OAuth2TokenEncrypted, &isActive, &isImported, &syncCron,
 		&retentionLocal, &retentionMoveToS3, &retentionS3,
 		&createdAt, &updatedAt,
 	)
@@ -228,6 +228,7 @@ func scanAccount(row rowScanner) (*domain.Account, error) {
 	a.SyncCron = syncCron.String
 	a.IMAPTLS = domain.IMAPTLSMode(imapTLS)
 	a.IsActive = isActive != 0
+	a.IsImported = isImported != 0
 	a.RetentionLocalDays = nullInt64ToIntPtr(retentionLocal)
 	a.RetentionMoveToS3Days = nullInt64ToIntPtr(retentionMoveToS3)
 	a.RetentionS3Days = nullInt64ToIntPtr(retentionS3)
