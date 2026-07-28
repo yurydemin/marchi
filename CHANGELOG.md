@@ -3,7 +3,7 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — на
 [Semantic Versioning](https://semver.org/lang/ru/).
 
-## [Unreleased]
+## [0.4.0] — 2026-07-28
 
 ### Добавлено
 
@@ -150,6 +150,7 @@
 - `govulncheck` в CI на каждый push/PR.
 - Аудит лицензий всех 89 зависимостей — MIT/Apache-2.0/BSD/MPL-2.0, копилефт-лицензий нет.
 
+[0.4.0]: https://github.com/yurydemin/marchi/releases/tag/v0.4.0
 [0.3.0]: https://github.com/yurydemin/marchi/releases/tag/v0.3.0
 [0.2.0]: https://github.com/yurydemin/marchi/releases/tag/v0.2.0
 [0.1.2]: https://github.com/yurydemin/marchi/releases/tag/v0.1.2
