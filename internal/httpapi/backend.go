@@ -266,6 +266,7 @@ func newBackend(cfg *config.Config, logger *zap.Logger, dek []byte, hub *wsHub) 
 		S3UploadQueueRepo: b.s3UploadQueueRepo,
 		RetentionRunner:   retentionRunner,
 		Manager:           b.manager,
+		OAuth2Refresher:   b.oauth2ConfigMgr,
 		Writer:            b.w,
 		Host:              host,
 		IndexFunc:         b.currentIndex,

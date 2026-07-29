@@ -24,6 +24,12 @@ type fakeFetchServer struct {
 	uidValidity uint32
 	uidNext     uint32
 	messages    []fakeMessage
+	// rejectLogin, if true, makes plain LOGIN always fail — used by
+	// TestSyncAccount_OAuth2AccessToken_AuthenticatesViaXOAUTH2NotLogin
+	// to prove SyncAccount's oauth2AccessToken parameter actually drives
+	// AUTHENTICATE XOAUTH2 rather than silently falling back to LOGIN
+	// with an empty password (the bug this test guards against).
+	rejectLogin bool
 }
 
 var uidFetchRangeStart = regexp.MustCompile(`UID FETCH (\d+):`)
@@ -69,8 +75,47 @@ func serveFakeFetchConn(conn net.Conn, s fakeFetchServer) {
 		upper := strings.ToUpper(line)
 
 		switch {
+		case strings.Contains(upper, "CAPABILITY"):
+			fmt.Fprint(w, "* CAPABILITY IMAP4rev1 AUTH=XOAUTH2\r\n")
+			fmt.Fprintf(w, "%s OK CAPABILITY completed\r\n", tag)
+			w.Flush()
+
 		case strings.Contains(upper, " LOGIN "):
-			fmt.Fprintf(w, "%s OK LOGIN completed\r\n", tag)
+			if s.rejectLogin {
+				fmt.Fprintf(w, "%s NO [AUTHENTICATIONFAILED] basic auth disabled\r\n", tag)
+			} else {
+				fmt.Fprintf(w, "%s OK LOGIN completed\r\n", tag)
+			}
+			w.Flush()
+
+		case strings.Contains(upper, " AUTHENTICATE XOAUTH2"):
+			// Minimal AUTHENTICATE XOAUTH2 continuation exchange (always
+			// succeeds) — internal/imapclient's own fake_server_test.go
+			// covers the mechanics (including the failure path) at the
+			// imapclient.Connect level already; this only needs to prove
+			// SyncAccount's oauth2AccessToken parameter actually reaches
+			// ConnectOptions.OAuth2AccessToken and drives XOAUTH2 instead
+			// of LOGIN.
+			fmt.Fprint(w, "+ \r\n")
+			w.Flush()
+			if _, err := r.ReadString('\n'); err != nil {
+				return
+			}
+			fmt.Fprintf(w, "%s OK AUTHENTICATE completed\r\n", tag)
+			w.Flush()
+
+		case strings.Contains(upper, " LIST "):
+			// Only used by TestSyncAccount_OAuth2AccessToken_AuthenticatesViaXOAUTH2NotLogin
+			// (via SyncAccount -> SyncFolders -> imapclient.ListFolders) —
+			// every other test in this file drives FetchNewMessages
+			// directly and never issues LIST.
+			fmt.Fprint(w, "* LIST (\\HasNoChildren) \"/\" \"INBOX\"\r\n")
+			fmt.Fprintf(w, "%s OK LIST completed\r\n", tag)
+			w.Flush()
+
+		case strings.Contains(upper, " STATUS "):
+			fmt.Fprintf(w, "* STATUS \"INBOX\" (UIDVALIDITY %d)\r\n", s.uidValidity)
+			fmt.Fprintf(w, "%s OK STATUS completed\r\n", tag)
 			w.Flush()
 
 		case strings.Contains(upper, " SELECT ") || strings.Contains(upper, " EXAMINE "):

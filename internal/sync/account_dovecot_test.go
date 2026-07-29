@@ -73,7 +73,7 @@ func TestSyncAccount_FullOrchestration_RealDovecot(t *testing.T) {
 	}
 	syncLogsRepo := repo.NewSyncLogsRepo(env.sqlDB, env.w)
 
-	results, err := SyncAccount(ctx, account, "pass12345", env.maildirRoot, "test-host",
+	results, err := SyncAccount(ctx, account, "pass12345", "", env.maildirRoot, "test-host",
 		env.w, env.foldersR, env.emailsR, env.attachmentsR, syncLogsRepo, rulesRepo, nil,
 		s3ConfigRepo, s3QueueRepo, nil)
 	if err != nil {

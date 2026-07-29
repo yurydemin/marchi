@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -89,6 +90,41 @@ func TestApp_AuthURL_IncludesClientIDStateAndOfflineAccess(t *testing.T) {
 	}
 	if q.Get("prompt") != "consent" {
 		t.Errorf("prompt = %q, want consent", q.Get("prompt"))
+	}
+}
+
+func TestApp_AuthURL_GmailAPIScopesOverrideDefault(t *testing.T) {
+	app := testApp()
+	app.Scopes = GmailAPIScopes
+	authURL, err := app.AuthURL("state")
+	if err != nil {
+		t.Fatalf("AuthURL: %v", err)
+	}
+	u, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parsing AuthURL result: %v", err)
+	}
+	scope := u.Query().Get("scope")
+	if scope != "https://www.googleapis.com/auth/gmail.modify" {
+		t.Errorf("scope = %q, want gmail.modify", scope)
+	}
+	if strings.Contains(scope, "mail.google.com") {
+		t.Errorf("scope = %q, should not include the IMAP-wide default", scope)
+	}
+}
+
+func TestApp_AuthURL_NilScopesKeepsProviderDefault(t *testing.T) {
+	app := testApp() // Scopes left nil
+	authURL, err := app.AuthURL("state")
+	if err != nil {
+		t.Fatalf("AuthURL: %v", err)
+	}
+	u, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parsing AuthURL result: %v", err)
+	}
+	if scope := u.Query().Get("scope"); scope != "https://mail.google.com/" {
+		t.Errorf("scope = %q, want the unchanged IMAP-wide default", scope)
 	}
 }
 

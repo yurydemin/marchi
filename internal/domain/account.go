@@ -34,6 +34,18 @@ func (m IMAPTLSMode) String() string {
 	}
 }
 
+// ConnectorType distinguishes how Marchi talks to a mailbox. ConnectorIMAP
+// is the default and everything Phase 1-4 ever did; ConnectorGmailAPI
+// syncs a Gmail account through Google's native REST API instead —
+// labels instead of folders, History API delta sync instead of UID
+// FETCH — see internal/gmailapi and internal/sync.SyncAccountGmailAPI.
+type ConnectorType string
+
+const (
+	ConnectorIMAP     ConnectorType = "imap"
+	ConnectorGmailAPI ConnectorType = "gmail_api"
+)
+
 // ParseIMAPTLSMode is String's inverse — shared by the CLI's --tls flag
 // and the Accounts REST API's JSON "tls" field so the two never drift
 // apart on which strings are accepted. An empty string defaults to ssl,
@@ -71,6 +83,15 @@ type Account struct {
 	// this column for why it's distinct from IsActive).
 	IsImported bool
 	SyncCron   string // FR-SE-06: cron expression; "" means "use sync.default_schedule"
+	// ConnectorType selects which sync engine Scheduler dispatches this
+	// account to (internal/scheduler). Empty behaves as ConnectorIMAP —
+	// every account created before this field existed is an IMAP account.
+	ConnectorType ConnectorType
+	// GmailHistoryID is ConnectorGmailAPI's incremental-sync cursor
+	// (Gmail History API's startHistoryId for the next sync). Empty means
+	// no full sync has completed yet — the next sync must list every
+	// message rather than just the delta since a cursor.
+	GmailHistoryID string
 	// RetentionLocalDays/RetentionMoveToS3Days/RetentionS3Days override
 	// this account's retention policy (FR-RE-04); nil means "inherit the
 	// global default" (repo.RetentionSettingsRepo), the same nil-means-

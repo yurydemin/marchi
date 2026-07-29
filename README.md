@@ -12,6 +12,10 @@ IMAP-аккаунты, архивирует письма в фоне по нас
 
 - **IMAP-аккаунты**: пароль или OAuth2 (Google/Microsoft, BYO-приложение — свой
   `client_id`/`client_secret`, Marchi не поставляет общий клиент).
+- **Gmail API-коннектор**: альтернатива IMAP для Google-аккаунтов — синк через нативный
+  Gmail REST API с дельта-синхронизацией (History API) вместо полного обхода UID; пока
+  только через REST (`POST /api/v1/accounts/oauth2` с `"connector_type": "gmail_api"`),
+  без формы в Web UI. Подробности — [docs/api/openapi.yaml](docs/api/openapi.yaml).
 - **Правила архивации**: визуальный AND/OR-конструктор условий (тема, отправитель,
   домен, вложения, размер, дата, папка — 15 типов условий, вложенность до 3 уровней),
   действия `archive`/`skip`/`archive_and_delete`/`archive_and_mark_read`. Правила можно

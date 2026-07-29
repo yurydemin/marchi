@@ -312,9 +312,9 @@ func handleAccountsTest(vault *vaultState, store *session.Store, pages map[strin
 			}
 			return fiber.NewError(fiber.StatusInternalServerError, "loading account failed")
 		}
-		password, err := b.manager.DecryptPassword(a)
+		auth, err := b.manager.ResolveIMAPAuth(c.Context(), a, b.oauth2ConfigMgr)
 		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "decrypting password failed")
+			return fiber.NewError(fiber.StatusInternalServerError, "resolving imap auth failed")
 		}
 
 		imapCtx, imapCancel := context.WithTimeout(c.Context(), imapclient.DefaultDialTimeout)
@@ -323,7 +323,7 @@ func handleAccountsTest(vault *vaultState, store *session.Store, pages map[strin
 		result := testResultData{}
 		conn, err := imapclient.Connect(imapCtx, imapclient.ConnectOptions{
 			Host: a.IMAPHost, Port: a.IMAPPort, TLS: a.IMAPTLS,
-			Username: a.IMAPUsername, Password: password,
+			Username: a.IMAPUsername, Password: auth.Password, OAuth2AccessToken: auth.OAuth2AccessToken,
 		})
 		if err != nil {
 			result.Error = err.Error()

@@ -86,6 +86,81 @@ func TestAccountsRepo_CreateAndList(t *testing.T) {
 	}
 }
 
+func TestAccountsRepo_ConnectorType_DefaultsToIMAP(t *testing.T) {
+	repo, _ := openTestRepo(t)
+	ctx := context.Background()
+
+	id, err := repo.Create(ctx, &domain.Account{
+		Email: "noconnector@example.com", IMAPHost: "imap.example.com", IMAPPort: 993, IsActive: true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	a, err := repo.GetByID(ctx, id)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if a.ConnectorType != domain.ConnectorIMAP {
+		t.Errorf("ConnectorType = %q, want %q", a.ConnectorType, domain.ConnectorIMAP)
+	}
+	if a.GmailHistoryID != "" {
+		t.Errorf("GmailHistoryID = %q, want empty", a.GmailHistoryID)
+	}
+}
+
+func TestAccountsRepo_ConnectorType_GmailAPIRoundTrip(t *testing.T) {
+	repo, _ := openTestRepo(t)
+	ctx := context.Background()
+
+	id, err := repo.Create(ctx, &domain.Account{
+		Email: "gmail@example.com", IsActive: true,
+		OAuth2Provider: domain.OAuth2ProviderGoogle,
+		ConnectorType:  domain.ConnectorGmailAPI,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	a, err := repo.GetByID(ctx, id)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if a.ConnectorType != domain.ConnectorGmailAPI {
+		t.Errorf("ConnectorType = %q, want %q", a.ConnectorType, domain.ConnectorGmailAPI)
+	}
+
+	if err := repo.UpdateGmailHistoryID(ctx, id, "12345"); err != nil {
+		t.Fatalf("UpdateGmailHistoryID: %v", err)
+	}
+	a, err = repo.GetByID(ctx, id)
+	if err != nil {
+		t.Fatalf("GetByID after UpdateGmailHistoryID: %v", err)
+	}
+	if a.GmailHistoryID != "12345" {
+		t.Errorf("GmailHistoryID = %q, want %q", a.GmailHistoryID, "12345")
+	}
+
+	if err := repo.UpdateGmailHistoryID(ctx, id, ""); err != nil {
+		t.Fatalf("UpdateGmailHistoryID (clear): %v", err)
+	}
+	a, err = repo.GetByID(ctx, id)
+	if err != nil {
+		t.Fatalf("GetByID after clearing: %v", err)
+	}
+	if a.GmailHistoryID != "" {
+		t.Errorf("GmailHistoryID = %q, want empty after clearing", a.GmailHistoryID)
+	}
+}
+
+func TestAccountsRepo_UpdateGmailHistoryID_UnknownID(t *testing.T) {
+	repo, _ := openTestRepo(t)
+	ctx := context.Background()
+
+	err := repo.UpdateGmailHistoryID(ctx, 999, "1")
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("err = %v, want sql.ErrNoRows", err)
+	}
+}
+
 func TestAccountsRepo_DuplicateEmailRejected(t *testing.T) {
 	repo, _ := openTestRepo(t)
 	ctx := context.Background()

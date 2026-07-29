@@ -3,6 +3,36 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — на
 [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [0.8.0] — 2026-07-30
+
+### Добавлено
+
+- Gmail API-коннектор — альтернатива IMAP для Google-аккаунтов: синхронизация через
+  нативный Gmail REST API вместо IMAP-протокола, с дельта-синхронизацией по Gmail
+  History API (обычный полный обход применяется только на первом запуске или если
+  курсор истории устарел). Вся почта (кроме Спама/Корзины) архивируется в единую папку
+  «All Mail» — у Gmail нет папок в IMAP-смысле, только метки, а одно письмо может
+  одновременно носить несколько меток. Правила архивации работают как обычно:
+  `archive_and_mark_read` снимает метку `UNREAD`, `archive_and_delete` перемещает письмо
+  в Корзину Gmail (обратимо 30 дней). Создать такой аккаунт можно через
+  `POST /api/v1/accounts/oauth2` с `"connector_type": "gmail_api"` (нужен OAuth2-токен
+  с scope `https://www.googleapis.com/auth/gmail.modify`, не тем же, что используется
+  для IMAP) — отдельной формы в Web UI для этого пока нет, добавление IMAP-аккаунтов
+  через интерфейс не изменилось.
+
+### Исправлено
+
+- OAuth2 IMAP-аккаунты (Google/Microsoft через IMAP, не Gmail API-коннектор выше) не
+  синхронизировались вообще: все реальные точки запуска синхронизации (планировщик,
+  CLI `marchi sync`, обе версии «Проверить подключение» — JSON API и Web UI) безусловно
+  расшифровывали IMAP-пароль, даже если у аккаунта его никогда не было (OAuth2-аккаунт
+  хранит только токен). В результате попытка синхронизации падала на расшифровке до
+  реального подключения — `internal/account.Manager.ResolveIMAPAuth` (резолвинг и, если
+  нужно, обновление токена) существовал с Фазы 3, но фактически вызывался только из
+  восстановления писем. Теперь все четыре места используют `ResolveIMAPAuth`, а
+  `internal/sync.SyncAccount` принимает и пароль, и OAuth2 access token, передавая в
+  IMAP-клиент то, что реально применимо к аккаунту.
+
 ## [0.7.0] — 2026-07-30
 
 ### Добавлено
@@ -198,6 +228,7 @@
 - `govulncheck` в CI на каждый push/PR.
 - Аудит лицензий всех 89 зависимостей — MIT/Apache-2.0/BSD/MPL-2.0, копилефт-лицензий нет.
 
+[0.8.0]: https://github.com/yurydemin/marchi/releases/tag/v0.8.0
 [0.7.0]: https://github.com/yurydemin/marchi/releases/tag/v0.7.0
 [0.6.0]: https://github.com/yurydemin/marchi/releases/tag/v0.6.0
 [0.5.0]: https://github.com/yurydemin/marchi/releases/tag/v0.5.0

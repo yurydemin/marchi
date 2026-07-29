@@ -42,6 +42,7 @@ type accountResponse struct {
 	IMAPTLS        string    `json:"imap_tls"`
 	IMAPUsername   string    `json:"imap_username"`
 	OAuth2Provider string    `json:"oauth2_provider,omitempty"`
+	ConnectorType  string    `json:"connector_type"`
 	IsActive       bool      `json:"is_active"`
 	SyncCron       string    `json:"sync_cron,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
@@ -49,11 +50,15 @@ type accountResponse struct {
 }
 
 func accountResponseFrom(a *domain.Account) accountResponse {
+	connectorType := a.ConnectorType
+	if connectorType == "" {
+		connectorType = domain.ConnectorIMAP
+	}
 	return accountResponse{
 		ID: a.ID, Email: a.Email, DisplayName: a.DisplayName,
 		IMAPHost: a.IMAPHost, IMAPPort: a.IMAPPort, IMAPTLS: a.IMAPTLS.String(),
-		IMAPUsername: a.IMAPUsername, OAuth2Provider: a.OAuth2Provider, IsActive: a.IsActive,
-		SyncCron: a.SyncCron, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
+		IMAPUsername: a.IMAPUsername, OAuth2Provider: a.OAuth2Provider, ConnectorType: string(connectorType),
+		IsActive: a.IsActive, SyncCron: a.SyncCron, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
 	}
 }
 
@@ -137,6 +142,16 @@ type createOAuth2AccountRequest struct {
 	OAuth2RefreshToken  string `json:"oauth2_refresh_token" form:"oauth2_refresh_token"`
 	OAuth2ExpiresInSecs int    `json:"oauth2_expires_in_seconds" form:"oauth2_expires_in_seconds"` // 0 = unknown/never
 	OAuth2Scope         string `json:"oauth2_scope" form:"oauth2_scope"`
+	// ConnectorType selects "imap" (default, omit this field entirely for
+	// today's behavior) or "gmail_api" — a Gmail account synced through
+	// Google's native REST API instead of IMAP (internal/gmailapi). A
+	// gmail_api account ignores imap_host/imap_port/imap_tls/imap_username
+	// entirely and requires oauth2_provider "google". The access token
+	// must have been obtained with a scope covering the Gmail API (see
+	// internal/oauth2.GmailAPIScopes) — an IMAP-scoped token
+	// (https://mail.google.com/) works for IMAP accounts but is not
+	// broad enough for the Gmail API's own endpoints.
+	ConnectorType string `json:"connector_type" form:"connector_type"`
 }
 
 func handleCreateOAuth2Account(vault *vaultState) fiber.Handler {
@@ -159,10 +174,20 @@ func handleCreateOAuth2Account(vault *vaultState) fiber.Handler {
 			expiry = time.Now().Add(time.Duration(req.OAuth2ExpiresInSecs) * time.Second)
 		}
 
+		connectorType := domain.ConnectorType(req.ConnectorType)
+		switch connectorType {
+		case "", domain.ConnectorIMAP:
+			connectorType = domain.ConnectorIMAP
+		case domain.ConnectorGmailAPI:
+			// valid, handled by AddOAuth2Account below
+		default:
+			return fiber.NewError(fiber.StatusBadRequest, "unknown connector_type (want \"imap\" or \"gmail_api\")")
+		}
+
 		a, err := b.manager.AddOAuth2Account(c.Context(), account.AddOAuth2AccountParams{
 			Email: req.Email, DisplayName: req.DisplayName, IMAPHost: req.IMAPHost,
 			IMAPPort: req.IMAPPort, IMAPTLS: tlsMode, IMAPUsername: req.IMAPUsername,
-			Provider: req.OAuth2Provider,
+			Provider: req.OAuth2Provider, ConnectorType: connectorType,
 			Token: oauth2pkg.Token{
 				AccessToken: req.OAuth2AccessToken, RefreshToken: req.OAuth2RefreshToken,
 				Expiry: expiry, Scope: req.OAuth2Scope,
@@ -285,9 +310,9 @@ func handleTestAccount(vault *vaultState) fiber.Handler {
 			}
 			return fiber.NewError(fiber.StatusInternalServerError, "loading account failed")
 		}
-		password, err := b.manager.DecryptPassword(a)
+		auth, err := b.manager.ResolveIMAPAuth(c.Context(), a, b.oauth2ConfigMgr)
 		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "decrypting password failed")
+			return fiber.NewError(fiber.StatusInternalServerError, "resolving imap auth failed")
 		}
 
 		imapCtx, imapCancel := context.WithTimeout(c.Context(), imapclient.DefaultDialTimeout)
@@ -295,7 +320,7 @@ func handleTestAccount(vault *vaultState) fiber.Handler {
 
 		conn, err := imapclient.Connect(imapCtx, imapclient.ConnectOptions{
 			Host: a.IMAPHost, Port: a.IMAPPort, TLS: a.IMAPTLS,
-			Username: a.IMAPUsername, Password: password,
+			Username: a.IMAPUsername, Password: auth.Password, OAuth2AccessToken: auth.OAuth2AccessToken,
 		})
 		if err != nil {
 			return c.Status(fiber.StatusOK).JSON(fiber.Map{"ok": false, "error": err.Error()})

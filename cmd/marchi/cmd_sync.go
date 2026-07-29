@@ -11,6 +11,7 @@ import (
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
 	"github.com/yurydemin/marchi/internal/i18n"
+	"github.com/yurydemin/marchi/internal/oauth2config"
 	"github.com/yurydemin/marchi/internal/search"
 	syncengine "github.com/yurydemin/marchi/internal/sync"
 )
@@ -44,13 +45,18 @@ func newSyncCmd(loc *i18n.Localizer) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			oauth2AppsRepo := repo.NewOAuth2AppsRepo(sqlDB, w)
+			oauth2ConfigMgr, err := oauth2config.NewManager(oauth2AppsRepo, masterKey)
+			if err != nil {
+				return err
+			}
 
 			a, err := accountsRepo.GetByEmail(cmd.Context(), email)
 			if err != nil {
 				return fmt.Errorf("account %s not found: %w", email, err)
 			}
 
-			password, err := mgr.DecryptPassword(a)
+			auth, err := mgr.ResolveIMAPAuth(cmd.Context(), a, oauth2ConfigMgr)
 			if err != nil {
 				return err
 			}
@@ -73,7 +79,7 @@ func newSyncCmd(loc *i18n.Localizer) *cobra.Command {
 			rulesRepo := repo.NewRulesRepo(sqlDB, w)
 			s3ConfigRepo := repo.NewS3ConfigRepo(sqlDB, w)
 			s3UploadQueueRepo := repo.NewS3UploadQueueRepo(sqlDB, w)
-			results, err := syncengine.SyncAccount(cmd.Context(), a, password, cfg.Storage.MaildirPath, host, w, foldersRepo, emailsRepo, attachmentsRepo, syncLogsRepo, rulesRepo, idx, s3ConfigRepo, s3UploadQueueRepo, nil)
+			results, err := syncengine.SyncAccount(cmd.Context(), a, auth.Password, auth.OAuth2AccessToken, cfg.Storage.MaildirPath, host, w, foldersRepo, emailsRepo, attachmentsRepo, syncLogsRepo, rulesRepo, idx, s3ConfigRepo, s3UploadQueueRepo, nil)
 
 			total := 0
 			for _, r := range results {

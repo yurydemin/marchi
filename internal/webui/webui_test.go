@@ -149,14 +149,15 @@ func TestParse_IndexPage_SyncButtonOnlyForActiveAccounts(t *testing.T) {
 // testAccount mirrors the exported fields internal/httpapi's
 // accountResponse feeds the "accounts" page's fragments with.
 type testAccount struct {
-	ID           int64
-	Email        string
-	DisplayName  string
-	IMAPHost     string
-	IMAPPort     int
-	IMAPTLS      string
-	IMAPUsername string
-	IsActive     bool
+	ID            int64
+	Email         string
+	DisplayName   string
+	IMAPHost      string
+	IMAPPort      int
+	IMAPTLS       string
+	IMAPUsername  string
+	ConnectorType string
+	IsActive      bool
 }
 
 func TestParse_ReturnsAccountsPage(t *testing.T) {

@@ -47,11 +47,13 @@ func (r *AccountsRepo) Create(ctx context.Context, a *domain.Account) (int64, er
 				email, display_name, imap_host, imap_port, imap_tls,
 				imap_username, imap_password_encrypted,
 				oauth2_provider, oauth2_token_encrypted, is_active, is_imported,
+				connector_type,
 				retention_local_days, retention_move_to_s3_days, retention_s3_days
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			a.Email, nullIfEmpty(a.DisplayName), a.IMAPHost, a.IMAPPort, int(a.IMAPTLS),
 			nullIfEmpty(a.IMAPUsername), a.IMAPPasswordEncrypted,
 			nullIfEmpty(a.OAuth2Provider), a.OAuth2TokenEncrypted, boolToInt(a.IsActive), boolToInt(a.IsImported),
+			connectorTypeOrDefault(a.ConnectorType),
 			nullIfZeroPtr(a.RetentionLocalDays), nullIfZeroPtr(a.RetentionMoveToS3Days), nullIfZeroPtr(a.RetentionS3Days),
 		)
 		if err != nil {
@@ -120,6 +122,28 @@ func (r *AccountsRepo) UpdateOAuth2Token(ctx context.Context, id int64, tokenEnc
 	})
 }
 
+// UpdateGmailHistoryID replaces only gmail_history_id — the narrow write
+// internal/sync.SyncAccountGmailAPI needs after each run to persist its
+// incremental-sync cursor, mirroring UpdateOAuth2Token's reasoning above.
+func (r *AccountsRepo) UpdateGmailHistoryID(ctx context.Context, id int64, historyID string) error {
+	return r.w.Do(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `
+			UPDATE accounts SET gmail_history_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+			nullIfEmpty(historyID), id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
+	})
+}
+
 // Delete removes the account identified by id. Every row that references
 // it (folders, emails, attachments, sync_logs) cascades via the schema's
 // own ON DELETE CASCADE foreign keys (FR-AM-06) — callers that also need
@@ -149,6 +173,7 @@ func (r *AccountsRepo) List(ctx context.Context) ([]*domain.Account, error) {
 		SELECT id, email, display_name, imap_host, imap_port, imap_tls,
 		       imap_username, imap_password_encrypted,
 		       oauth2_provider, oauth2_token_encrypted, is_active, is_imported, sync_cron,
+		       connector_type, gmail_history_id,
 		       retention_local_days, retention_move_to_s3_days, retention_s3_days,
 		       created_at, updated_at
 		FROM accounts ORDER BY id`)
@@ -174,6 +199,7 @@ func (r *AccountsRepo) GetByID(ctx context.Context, id int64) (*domain.Account, 
 		SELECT id, email, display_name, imap_host, imap_port, imap_tls,
 		       imap_username, imap_password_encrypted,
 		       oauth2_provider, oauth2_token_encrypted, is_active, is_imported, sync_cron,
+		       connector_type, gmail_history_id,
 		       retention_local_days, retention_move_to_s3_days, retention_s3_days,
 		       created_at, updated_at
 		FROM accounts WHERE id = ?`, id)
@@ -186,6 +212,7 @@ func (r *AccountsRepo) GetByEmail(ctx context.Context, email string) (*domain.Ac
 		SELECT id, email, display_name, imap_host, imap_port, imap_tls,
 		       imap_username, imap_password_encrypted,
 		       oauth2_provider, oauth2_token_encrypted, is_active, is_imported, sync_cron,
+		       connector_type, gmail_history_id,
 		       retention_local_days, retention_move_to_s3_days, retention_s3_days,
 		       created_at, updated_at
 		FROM accounts WHERE email = ?`, email)
@@ -203,6 +230,7 @@ func scanAccount(row rowScanner) (*domain.Account, error) {
 		displayName, imapUser                          sql.NullString
 		oauth2Provider                                 sql.NullString
 		syncCron                                       sql.NullString
+		connectorType, gmailHistoryID                  sql.NullString
 		retentionLocal, retentionMoveToS3, retentionS3 sql.NullInt64
 		isActive, isImported                           int
 		imapTLS                                        int
@@ -212,6 +240,7 @@ func scanAccount(row rowScanner) (*domain.Account, error) {
 		&a.ID, &a.Email, &displayName, &a.IMAPHost, &a.IMAPPort, &imapTLS,
 		&imapUser, &a.IMAPPasswordEncrypted,
 		&oauth2Provider, &a.OAuth2TokenEncrypted, &isActive, &isImported, &syncCron,
+		&connectorType, &gmailHistoryID,
 		&retentionLocal, &retentionMoveToS3, &retentionS3,
 		&createdAt, &updatedAt,
 	)
@@ -229,6 +258,11 @@ func scanAccount(row rowScanner) (*domain.Account, error) {
 	a.IMAPTLS = domain.IMAPTLSMode(imapTLS)
 	a.IsActive = isActive != 0
 	a.IsImported = isImported != 0
+	a.ConnectorType = domain.ConnectorType(connectorType.String)
+	if a.ConnectorType == "" {
+		a.ConnectorType = domain.ConnectorIMAP
+	}
+	a.GmailHistoryID = gmailHistoryID.String
 	a.RetentionLocalDays = nullInt64ToIntPtr(retentionLocal)
 	a.RetentionMoveToS3Days = nullInt64ToIntPtr(retentionMoveToS3)
 	a.RetentionS3Days = nullInt64ToIntPtr(retentionS3)
@@ -287,6 +321,17 @@ func nullInt64ToIntPtr(n sql.NullInt64) *int {
 	}
 	v := int(n.Int64)
 	return &v
+}
+
+// connectorTypeOrDefault treats an unset ConnectorType the same as
+// domain.ConnectorIMAP explicitly (every account created before this field
+// existed, and every ordinary IMAP account since, never sets it) —
+// callers building a domain.Account don't have to remember to set it.
+func connectorTypeOrDefault(c domain.ConnectorType) string {
+	if c == "" {
+		return string(domain.ConnectorIMAP)
+	}
+	return string(c)
 }
 
 func wrapAccountErr(err error) error {

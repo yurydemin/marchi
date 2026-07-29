@@ -28,7 +28,8 @@ type FolderResult struct {
 	Fetched int
 }
 
-// SyncAccount connects to a using the already-decrypted password, syncs its
+// SyncAccount connects to a using the already-resolved password or OAuth2
+// access token (see the password/oauth2AccessToken parameter below), syncs its
 // folder list (FR-SE-01), then fetches new messages for every folder into
 // maildirRoot (config.yaml's storage.maildir_path). host names the Maildir
 // filename's hostname component (see maildir.NewWriter). idx, if non-nil,
@@ -60,7 +61,12 @@ type FolderResult struct {
 func SyncAccount(
 	ctx context.Context,
 	a *domain.Account,
-	password string,
+	// Exactly one of password/oauth2AccessToken should be non-empty,
+	// mirroring imapclient.ConnectOptions' own Password/OAuth2AccessToken
+	// split — the caller resolves which one applies (plain-password vs
+	// OAuth2 account) via account.Manager.ResolveIMAPAuth before calling
+	// this, refreshing an expired OAuth2 token first if it can.
+	password, oauth2AccessToken string,
 	maildirRoot, host string,
 	w writer.Writer,
 	foldersRepo *repo.FoldersRepo,
@@ -117,11 +123,12 @@ func SyncAccount(
 	}()
 
 	c, err := imapclient.Connect(ctx, imapclient.ConnectOptions{
-		Host:     a.IMAPHost,
-		Port:     a.IMAPPort,
-		TLS:      a.IMAPTLS,
-		Username: a.IMAPUsername,
-		Password: password,
+		Host:              a.IMAPHost,
+		Port:              a.IMAPPort,
+		TLS:               a.IMAPTLS,
+		Username:          a.IMAPUsername,
+		Password:          password,
+		OAuth2AccessToken: oauth2AccessToken,
 	})
 	if err != nil {
 		syncErr = err

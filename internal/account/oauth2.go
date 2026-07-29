@@ -11,18 +11,30 @@ import (
 	"github.com/yurydemin/marchi/internal/security/crypto"
 )
 
-// AddOAuth2AccountParams is the plaintext input for adding an OAuth2 IMAP
+// gmailAPIPlaceholderIMAPHost fills accounts.imap_host (NOT NULL) for a
+// ConnectorGmailAPI account, which never connects via IMAP at all — same
+// reasoning as cmd/marchi/cmd_import.go's importPlaceholderIMAPHost: a
+// value that fails DNS resolution loudly is safer here than one that
+// might coincidentally resolve, in case anything ever tried to dial it
+// by mistake.
+const gmailAPIPlaceholderIMAPHost = "gmail-api.invalid"
+
+// AddOAuth2AccountParams is the plaintext input for adding an OAuth2
 // account (FR-AM-01's Google/Microsoft path) — there's no IMAP password
 // for these at all; the OAuth2 token itself is what authenticates.
+// IMAPHost/IMAPPort/IMAPUsername are ignored when ConnectorType is
+// ConnectorGmailAPI (a Gmail API account never speaks IMAP — see
+// gmailAPIPlaceholderIMAPHost).
 type AddOAuth2AccountParams struct {
-	Email        string
-	DisplayName  string
-	IMAPHost     string
-	IMAPPort     int // 0 picks a sensible default for IMAPTLS
-	IMAPTLS      domain.IMAPTLSMode
-	IMAPUsername string // defaults to Email if empty
-	Provider     string // domain.OAuth2ProviderGoogle or domain.OAuth2ProviderMicrosoft
-	Token        oauth2pkg.Token
+	Email         string
+	DisplayName   string
+	IMAPHost      string
+	IMAPPort      int // 0 picks a sensible default for IMAPTLS
+	IMAPTLS       domain.IMAPTLSMode
+	IMAPUsername  string               // defaults to Email if empty
+	Provider      string               // domain.OAuth2ProviderGoogle or domain.OAuth2ProviderMicrosoft
+	ConnectorType domain.ConnectorType // "" behaves as domain.ConnectorIMAP
+	Token         oauth2pkg.Token
 }
 
 // AddOAuth2Account validates params, encrypts the token, and persists the
@@ -32,23 +44,30 @@ func (m *Manager) AddOAuth2Account(ctx context.Context, p AddOAuth2AccountParams
 		return nil, err
 	}
 
-	username := p.IMAPUsername
-	if username == "" {
-		username = p.Email
-	}
-	port := p.IMAPPort
-	if port == 0 {
-		port = defaultPortFor(p.IMAPTLS)
-	}
-
 	encToken, err := m.encryptOAuth2Token(p.Email, p.Token)
 	if err != nil {
 		return nil, err
 	}
 
 	a := &domain.Account{
-		Email: p.Email, DisplayName: p.DisplayName, IMAPHost: p.IMAPHost, IMAPPort: port, IMAPTLS: p.IMAPTLS,
-		IMAPUsername: username, OAuth2Provider: p.Provider, OAuth2TokenEncrypted: encToken, IsActive: true,
+		Email: p.Email, DisplayName: p.DisplayName,
+		OAuth2Provider: p.Provider, OAuth2TokenEncrypted: encToken, IsActive: true,
+		ConnectorType: p.ConnectorType,
+	}
+
+	if p.ConnectorType == domain.ConnectorGmailAPI {
+		a.IMAPHost = gmailAPIPlaceholderIMAPHost
+	} else {
+		a.IMAPHost = p.IMAPHost
+		a.IMAPPort = p.IMAPPort
+		if a.IMAPPort == 0 {
+			a.IMAPPort = defaultPortFor(p.IMAPTLS)
+		}
+		a.IMAPTLS = p.IMAPTLS
+		a.IMAPUsername = p.IMAPUsername
+		if a.IMAPUsername == "" {
+			a.IMAPUsername = p.Email
+		}
 	}
 
 	id, err := m.repo.Create(ctx, a)
@@ -128,35 +147,72 @@ func (m *Manager) ResolveIMAPAuth(ctx context.Context, a *domain.Account, refres
 		return IMAPAuth{Password: password}, nil
 	}
 
-	tok, err := m.DecryptOAuth2Token(a)
+	tok, err := m.resolveOAuth2Token(ctx, a, refresher)
 	if err != nil {
 		return IMAPAuth{}, err
 	}
-	if tok.Expired() && refresher != nil {
-		refreshed, err := refresher.RefreshToken(ctx, a.OAuth2Provider, tok)
-		if err != nil {
-			return IMAPAuth{}, fmt.Errorf("account: refreshing oauth2 token: %w", err)
-		}
-		if err := m.UpdateOAuth2Token(ctx, a, refreshed); err != nil {
-			return IMAPAuth{}, fmt.Errorf("account: persisting refreshed oauth2 token: %w", err)
-		}
-		tok = refreshed
-	}
 	return IMAPAuth{OAuth2AccessToken: tok.AccessToken}, nil
+}
+
+// ResolveGmailAPIAccessToken is ResolveIMAPAuth's counterpart for a
+// ConnectorGmailAPI account: every such account authenticates purely via
+// OAuth2 (there's no IMAP password branch to consider — a Gmail API
+// account is never anything else), so this just returns the resolved,
+// refreshed-if-necessary access token internal/gmailapi.Client needs.
+func (m *Manager) ResolveGmailAPIAccessToken(ctx context.Context, a *domain.Account, refresher OAuth2TokenRefresher) (string, error) {
+	tok, err := m.resolveOAuth2Token(ctx, a, refresher)
+	if err != nil {
+		return "", err
+	}
+	return tok.AccessToken, nil
+}
+
+// resolveOAuth2Token decrypts a's stored OAuth2 token and refreshes it
+// first if it's expired and a refresher was supplied — the shared dance
+// both ResolveIMAPAuth and ResolveGmailAPIAccessToken need. refresher may
+// be nil, in which case an expired token is returned as-is (see
+// ResolveIMAPAuth's own doc comment for why: the caller then simply gets
+// a clear "authentication failed" from whatever it tries to use the
+// token for, rather than this silently refreshing when the caller didn't
+// ask it to).
+func (m *Manager) resolveOAuth2Token(ctx context.Context, a *domain.Account, refresher OAuth2TokenRefresher) (oauth2pkg.Token, error) {
+	tok, err := m.DecryptOAuth2Token(a)
+	if err != nil {
+		return oauth2pkg.Token{}, err
+	}
+	if !tok.Expired() || refresher == nil {
+		return tok, nil
+	}
+	refreshed, err := refresher.RefreshToken(ctx, a.OAuth2Provider, tok)
+	if err != nil {
+		return oauth2pkg.Token{}, fmt.Errorf("account: refreshing oauth2 token: %w", err)
+	}
+	if err := m.UpdateOAuth2Token(ctx, a, refreshed); err != nil {
+		return oauth2pkg.Token{}, fmt.Errorf("account: persisting refreshed oauth2 token: %w", err)
+	}
+	return refreshed, nil
 }
 
 func validateAddOAuth2AccountParams(p AddOAuth2AccountParams) error {
 	if strings.TrimSpace(p.Email) == "" {
 		return fmt.Errorf("account: email is required")
 	}
-	if strings.TrimSpace(p.IMAPHost) == "" {
-		return fmt.Errorf("account: imap host is required")
-	}
-	if p.IMAPPort < 0 || p.IMAPPort > 65535 {
-		return fmt.Errorf("account: imap port must be between 0 and 65535, got %d", p.IMAPPort)
+	// A ConnectorGmailAPI account never connects via IMAP at all (see
+	// gmailAPIPlaceholderIMAPHost) — none of the IMAP-specific fields
+	// below apply to it.
+	if p.ConnectorType != domain.ConnectorGmailAPI {
+		if strings.TrimSpace(p.IMAPHost) == "" {
+			return fmt.Errorf("account: imap host is required")
+		}
+		if p.IMAPPort < 0 || p.IMAPPort > 65535 {
+			return fmt.Errorf("account: imap port must be between 0 and 65535, got %d", p.IMAPPort)
+		}
 	}
 	if p.Provider != domain.OAuth2ProviderGoogle && p.Provider != domain.OAuth2ProviderMicrosoft {
 		return fmt.Errorf("account: unknown oauth2 provider %q", p.Provider)
+	}
+	if p.ConnectorType == domain.ConnectorGmailAPI && p.Provider != domain.OAuth2ProviderGoogle {
+		return fmt.Errorf("account: connector_type gmail_api requires oauth2_provider google")
 	}
 	if p.Token.AccessToken == "" {
 		return fmt.Errorf("account: oauth2 access token is required")

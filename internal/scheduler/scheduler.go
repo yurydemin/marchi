@@ -24,6 +24,7 @@ import (
 	"github.com/yurydemin/marchi/internal/db/repo"
 	"github.com/yurydemin/marchi/internal/db/writer"
 	"github.com/yurydemin/marchi/internal/domain"
+	"github.com/yurydemin/marchi/internal/gmailapi"
 	"github.com/yurydemin/marchi/internal/notify"
 	"github.com/yurydemin/marchi/internal/retention"
 	"github.com/yurydemin/marchi/internal/search"
@@ -78,6 +79,20 @@ type Deps struct {
 	RetentionRunner *retention.Runner
 	RetentionCron   string
 	Manager         *account.Manager
+	// OAuth2Refresher refreshes an expired OAuth2 token — needed for
+	// ConnectorGmailAPI accounts, whose sync authenticates purely via
+	// OAuth2 (account.Manager.ResolveGmailAPIAccessToken). May be nil, in
+	// which case an expired token isn't refreshed before use (same
+	// nil-means-"don't refresh" convention internal/restore.Deps'
+	// identically-named field already uses).
+	OAuth2Refresher account.OAuth2TokenRefresher
+	// GmailAPIBaseURL overrides the Gmail API endpoint a ConnectorGmailAPI
+	// account's gmailapi.Client talks to — empty (the production default)
+	// keeps gmailapi.Client's own real-Google-API default. Exists purely
+	// as a test seam (pointing at an httptest.Server standing in for
+	// Gmail — see internal/gmailapi's own package doc comment for why
+	// this project hand-rolls that client instead of a full Google SDK).
+	GmailAPIBaseURL string
 	Writer          writer.Writer
 	Host            string
 	// Notifier, if nil, means failure notifications are disabled — the
@@ -288,12 +303,6 @@ func (s *Scheduler) syncOne(accountID int64, jobID string) {
 		return // deactivated since this tick was scheduled
 	}
 
-	password, err := s.deps.Manager.DecryptPassword(a)
-	if err != nil {
-		s.logger.Error("scheduler: decrypting password failed", zap.String("email", a.Email), zap.Error(err))
-		return
-	}
-
 	var idx *search.Index
 	if s.deps.IndexFunc != nil {
 		idx = s.deps.IndexFunc()
@@ -305,9 +314,31 @@ func (s *Scheduler) syncOne(accountID int64, jobID string) {
 	}
 
 	s.logger.Info("scheduler: starting sync", zap.String("email", a.Email))
-	results, syncErr := syncengine.SyncAccount(ctx, a, password, s.cfg.Storage.MaildirPath, s.deps.Host,
-		s.deps.Writer, s.deps.FoldersRepo, s.deps.EmailsRepo, s.deps.AttachmentsRepo, s.deps.SyncLogsRepo,
-		s.deps.RulesRepo, idx, s.deps.S3ConfigRepo, s.deps.S3UploadQueueRepo, onProgress)
+
+	var results []syncengine.FolderResult
+	var syncErr error
+	if a.ConnectorType == domain.ConnectorGmailAPI {
+		accessToken, tokErr := s.deps.Manager.ResolveGmailAPIAccessToken(ctx, a, s.deps.OAuth2Refresher)
+		if tokErr != nil {
+			s.logger.Error("scheduler: resolving gmail api access token failed", zap.String("email", a.Email), zap.Error(tokErr))
+			return
+		}
+		client := &gmailapi.Client{BaseURL: s.deps.GmailAPIBaseURL, AccessToken: accessToken}
+		result, gmailErr := syncengine.SyncAccountGmailAPI(ctx, a, client, s.cfg.Storage.MaildirPath, s.deps.Host,
+			s.deps.Writer, s.deps.AccountsRepo, s.deps.FoldersRepo, s.deps.EmailsRepo, s.deps.AttachmentsRepo, s.deps.SyncLogsRepo,
+			s.deps.RulesRepo, idx, s.deps.S3ConfigRepo, s.deps.S3UploadQueueRepo, onProgress)
+		results = []syncengine.FolderResult{result}
+		syncErr = gmailErr
+	} else {
+		auth, err := s.deps.Manager.ResolveIMAPAuth(ctx, a, s.deps.OAuth2Refresher)
+		if err != nil {
+			s.logger.Error("scheduler: resolving imap auth failed", zap.String("email", a.Email), zap.Error(err))
+			return
+		}
+		results, syncErr = syncengine.SyncAccount(ctx, a, auth.Password, auth.OAuth2AccessToken, s.cfg.Storage.MaildirPath, s.deps.Host,
+			s.deps.Writer, s.deps.FoldersRepo, s.deps.EmailsRepo, s.deps.AttachmentsRepo, s.deps.SyncLogsRepo,
+			s.deps.RulesRepo, idx, s.deps.S3ConfigRepo, s.deps.S3UploadQueueRepo, onProgress)
+	}
 
 	archived := 0
 	for _, r := range results {

@@ -95,7 +95,7 @@ htmx:afterRequest listener for #add-account-form).
 {{define "account-row"}}
 <tr id="account-row-{{.ID}}">
   <td class="px-4 py-2">{{.Email}}</td>
-  <td class="px-4 py-2 text-xs text-stone-500 dark:text-stone-400">{{.IMAPHost}}:{{.IMAPPort}} ({{.IMAPTLS}})</td>
+  <td class="px-4 py-2 text-xs text-stone-500 dark:text-stone-400">{{if eq .ConnectorType "gmail_api"}}Gmail API{{else}}{{.IMAPHost}}:{{.IMAPPort}} ({{.IMAPTLS}}){{end}}</td>
   <td class="px-4 py-2">
     <button
       class="rounded-full px-2 py-0.5 text-xs font-medium {{if .IsActive}}bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-400{{else}}bg-stone-100 dark:bg-stone-700 text-stone-500 dark:text-stone-400{{end}}"

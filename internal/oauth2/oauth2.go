@@ -44,6 +44,13 @@ var defaultScopes = map[string][]string{
 	domain.OAuth2ProviderMicrosoft: {"https://outlook.office.com/IMAP.AccessAsUser.All", "https://outlook.office.com/SMTP.Send", "offline_access"},
 }
 
+// GmailAPIScopes is what a ConnectorGmailAPI account needs instead of
+// defaultScopes' IMAP-wide https://mail.google.com/: gmail.modify covers
+// reading messages (archiving) and the label/trash mutations FR-RE-03's
+// archive_and_mark_read/archive_and_delete rule actions perform through
+// the Gmail API (internal/gmailapi) rather than IMAP STORE/EXPUNGE.
+var GmailAPIScopes = []string{"https://www.googleapis.com/auth/gmail.modify"}
+
 func endpointFor(provider string) (oauth2.Endpoint, error) {
 	switch provider {
 	case domain.OAuth2ProviderGoogle:
@@ -100,6 +107,13 @@ type App struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
+	// Scopes overrides defaultScopes[Provider] for AuthURL — nil (the
+	// common case, every IMAP account) keeps today's provider-wide
+	// default; a ConnectorGmailAPI account's caller sets this to
+	// GmailAPIScopes instead. Only AuthURL reads this: Exchange/Refresh
+	// don't send a scope parameter, so an already-issued token works
+	// the same regardless of what Scopes was set to when it was granted.
+	Scopes []string
 }
 
 func (a App) config() (*oauth2.Config, error) {
@@ -107,9 +121,13 @@ func (a App) config() (*oauth2.Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	scopes := a.Scopes
+	if scopes == nil {
+		scopes = defaultScopes[a.Provider]
+	}
 	return &oauth2.Config{
 		ClientID: a.ClientID, ClientSecret: a.ClientSecret, Endpoint: endpoint,
-		RedirectURL: a.RedirectURL, Scopes: defaultScopes[a.Provider],
+		RedirectURL: a.RedirectURL, Scopes: scopes,
 	}, nil
 }
 

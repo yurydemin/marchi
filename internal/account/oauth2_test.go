@@ -79,6 +79,37 @@ func TestAddOAuth2Account_ValidationErrors(t *testing.T) {
 	}
 }
 
+func TestAddOAuth2Account_GmailAPIConnector_NoIMAPHostRequired(t *testing.T) {
+	mgr := openTestManager(t, testMasterKey(t))
+	a, err := mgr.AddOAuth2Account(context.Background(), AddOAuth2AccountParams{
+		Email: "user@gmail.com", Provider: domain.OAuth2ProviderGoogle,
+		ConnectorType: domain.ConnectorGmailAPI, Token: oauth2pkg.Token{AccessToken: "tok"},
+	})
+	if err != nil {
+		t.Fatalf("AddOAuth2Account: %v", err)
+	}
+	if a.ConnectorType != domain.ConnectorGmailAPI {
+		t.Errorf("ConnectorType = %q, want %q", a.ConnectorType, domain.ConnectorGmailAPI)
+	}
+	if a.IMAPHost != gmailAPIPlaceholderIMAPHost {
+		t.Errorf("IMAPHost = %q, want the placeholder %q", a.IMAPHost, gmailAPIPlaceholderIMAPHost)
+	}
+	if a.IMAPUsername != "" {
+		t.Errorf("IMAPUsername = %q, want empty (never defaulted for a gmail_api account)", a.IMAPUsername)
+	}
+}
+
+func TestAddOAuth2Account_GmailAPIConnector_RequiresGoogleProvider(t *testing.T) {
+	mgr := openTestManager(t, testMasterKey(t))
+	_, err := mgr.AddOAuth2Account(context.Background(), AddOAuth2AccountParams{
+		Email: "user@outlook.com", Provider: domain.OAuth2ProviderMicrosoft,
+		ConnectorType: domain.ConnectorGmailAPI, Token: oauth2pkg.Token{AccessToken: "tok"},
+	})
+	if err == nil {
+		t.Error("expected an error for gmail_api connector with a non-google provider")
+	}
+}
+
 func TestUpdateOAuth2Token_ReplacesTokenOnly(t *testing.T) {
 	mgr := openTestManager(t, testMasterKey(t))
 	ctx := context.Background()
