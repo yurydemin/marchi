@@ -36,6 +36,17 @@ type HTTPConfig struct {
 	Host string    `yaml:"host"`
 	Port int       `yaml:"port"`
 	TLS  TLSConfig `yaml:"tls"`
+	// TrustedProxies, if non-empty, is the list of IPs/CIDRs (e.g. a
+	// reverse proxy container's own address, or its subnet) marchi will
+	// trust the X-Forwarded-For header from — see docs/REVERSE_PROXY.md
+	// for why this matters: without it, every request behind a reverse
+	// proxy looks like it came from the proxy itself, which breaks the
+	// per-source-IP unlock lockout (internal/httpapi/unlock_lockout.go)
+	// and makes the audit log's IP column useless. Empty (the default)
+	// keeps the pre-existing behavior — c.IP() reads the raw connection
+	// address, ignoring X-Forwarded-For entirely, which is exactly right
+	// when nothing sits in front of marchi.
+	TrustedProxies []string `yaml:"trusted_proxies"`
 }
 
 type TLSConfig struct {

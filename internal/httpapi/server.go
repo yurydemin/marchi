@@ -45,10 +45,22 @@ const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 
 // comment, that alone doesn't authenticate any browser session; a fresh
 // browser still has to hit /unlock once to get its own session cookie.
 func New(cfg *config.Config, logger *zap.Logger) (*fiber.App, *vaultState) {
-	app := fiber.New(fiber.Config{
+	fiberCfg := fiber.Config{
 		AppName:               "Marchi",
 		DisableStartupMessage: true,
-	})
+	}
+	// Only trust X-Forwarded-For from an explicitly configured reverse
+	// proxy (http.trusted_proxies) — leaving EnableTrustedProxyCheck off
+	// by default means c.IP() (used by the unlock lockout, the audit
+	// log, and rate limiting) can't be spoofed by an arbitrary client
+	// just sending its own X-Forwarded-For header, which trusting it
+	// unconditionally would allow. See docs/REVERSE_PROXY.md.
+	if len(cfg.HTTP.TrustedProxies) > 0 {
+		fiberCfg.EnableTrustedProxyCheck = true
+		fiberCfg.TrustedProxies = cfg.HTTP.TrustedProxies
+		fiberCfg.ProxyHeader = fiber.HeaderXForwardedFor
+	}
+	app := fiber.New(fiberCfg)
 
 	hub := newWSHub()
 	vault := newVaultState(func(key []byte) (*backend, error) {

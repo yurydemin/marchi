@@ -23,6 +23,15 @@ import (
 // covered by internal/sync's own cancellation tests — then restart it and
 // confirm the archive ends up complete, with no duplicate or missing
 // messages and no database corruption.
+//
+// Three different kill points (early/mid/late), not just one: NFR-RL-02/03's
+// guarantee has to hold everywhere a crash could land, not just wherever a
+// single fixed sleep duration happened to land historically. Each subtest
+// gets its own fresh data dir/account (a completely independent SQLite DB
+// and Maildir tree) so the three runs can't interfere with each other, but
+// all three share the one Dovecot server and its already-seeded messages —
+// nothing about seeding is destructive, so there's no reason to redo it
+// per subtest.
 func TestCrashRecovery_KillMidSync_ResumesWithoutDuplicatesOrLoss(t *testing.T) {
 	binary := buildMarchi(t)
 	srv := dovecot.Start(t, "testuser@dovecot.local", "testpass123")
@@ -36,37 +45,48 @@ func TestCrashRecovery_KillMidSync_ResumesWithoutDuplicatesOrLoss(t *testing.T) 
 		srv.AppendMessage(t, email, "testpass123", "INBOX", testMessage(i))
 	}
 
-	dataDir := t.TempDir()
-	runMarchi(t, binary, dataDir, nil, masterKey+"\n"+masterKey+"\n", "unlock")
-	runMarchi(t, binary, dataDir, nil, masterKey+"\ntestpass123\n",
-		"add-account", email, "--host", srv.Host, "--port", fmt.Sprint(srv.Port), "--tls", "none")
+	for _, tt := range []struct {
+		name        string
+		targetCount int
+	}{
+		{"Early", 3}, // barely any progress — closer to the very first archiveOne call
+		{"Mid", 30},  // the original Phase 1 step 17 scenario
+		{"Late", 55}, // close to completion, where a crash could race the tail end of the run
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			runMarchi(t, binary, dataDir, nil, masterKey+"\n"+masterKey+"\n", "unlock")
+			runMarchi(t, binary, dataDir, nil, masterKey+"\ntestpass123\n",
+				"add-account", email, "--host", srv.Host, "--port", fmt.Sprint(srv.Port), "--tls", "none")
 
-	killMidSync(t, binary, dataDir, masterKey, email)
+			dbPath := filepath.Join(dataDir, "data", "marchi.db")
+			killAtCount(t, binary, dataDir, masterKey, email, dbPath, tt.targetCount)
 
-	dbPath := filepath.Join(dataDir, "data", "marchi.db")
-	partial := countEmails(t, dbPath)
-	if partial == 0 {
-		t.Fatal("expected at least some messages archived before the kill, got 0 — timing needs adjusting")
+			partial := countEmails(t, dbPath)
+			if partial == 0 {
+				t.Fatal("expected at least some messages archived before the kill, got 0 — timing needs adjusting")
+			}
+			if partial >= totalMessages {
+				t.Fatalf("got %d archived before the kill, want < %d — sync finished before SIGKILL landed, timing needs adjusting", partial, totalMessages)
+			}
+			assertNoDuplicateUIDs(t, dbPath)
+			assertLocalPathsExist(t, dbPath, dataDir)
+			t.Logf("archived %d/%d messages before SIGKILL (target %d)", partial, totalMessages, tt.targetCount)
+
+			// Resume: a fresh process, same data dir.
+			out := runMarchi(t, binary, dataDir, nil, masterKey+"\n", "sync", email)
+			t.Logf("resume sync output:\n%s", out)
+
+			final := countEmails(t, dbPath)
+			if final != totalMessages {
+				t.Errorf("got %d emails after resuming, want %d", final, totalMessages)
+			}
+			assertNoDuplicateUIDs(t, dbPath)
+			assertNoGapsInUIDs(t, dbPath, totalMessages)
+			assertLocalPathsExist(t, dbPath, dataDir)
+			assertTmpDirEmpty(t, dataDir)
+		})
 	}
-	if partial >= totalMessages {
-		t.Fatalf("got %d archived before the kill, want < %d — sync finished before SIGKILL landed, timing needs adjusting", partial, totalMessages)
-	}
-	assertNoDuplicateUIDs(t, dbPath)
-	assertLocalPathsExist(t, dbPath, dataDir)
-	t.Logf("archived %d/%d messages before SIGKILL", partial, totalMessages)
-
-	// Resume: a fresh process, same data dir.
-	out := runMarchi(t, binary, dataDir, nil, masterKey+"\n", "sync", email)
-	t.Logf("resume sync output:\n%s", out)
-
-	final := countEmails(t, dbPath)
-	if final != totalMessages {
-		t.Errorf("got %d emails after resuming, want %d", final, totalMessages)
-	}
-	assertNoDuplicateUIDs(t, dbPath)
-	assertNoGapsInUIDs(t, dbPath, totalMessages)
-	assertLocalPathsExist(t, dbPath, dataDir)
-	assertTmpDirEmpty(t, dataDir)
 }
 
 func testMessage(i int) []byte {
@@ -114,10 +134,15 @@ func runMarchi(t *testing.T, binary, dataDir string, env []string, stdin string,
 	return out.String()
 }
 
-// killMidSync starts `sync` as a background process, lets it run briefly,
-// then SIGKILLs it — no graceful shutdown, no cleanup, simulating a real
-// crash (power loss, OOM kill, ...) rather than step 16's SIGINT/SIGTERM.
-func killMidSync(t *testing.T, binary, dataDir, masterKey, email string) {
+// killAtCount starts `sync` as a background process, polls dbPath until at
+// least targetCount emails have been committed, then SIGKILLs it — no
+// graceful shutdown, no cleanup, simulating a real crash (power loss, OOM
+// kill, ...) rather than step 16's SIGINT/SIGTERM. Polling for an actual
+// row count (rather than sleeping a fixed duration, the original Phase 1
+// step 17 approach) is what makes hitting three distinct, well-separated
+// kill points reliable regardless of how fast the machine running the test
+// happens to be.
+func killAtCount(t *testing.T, binary, dataDir, masterKey, email, dbPath string, targetCount int) {
 	t.Helper()
 	cmd := exec.Command(binary, "sync", email)
 	cmd.Dir = dataDir
@@ -130,18 +155,34 @@ func killMidSync(t *testing.T, binary, dataDir, masterKey, email string) {
 		t.Fatalf("starting sync: %v", err)
 	}
 
-	// 150ms was the original margin (Phase 1 step 17); Phase 3's added
-	// migrations/repos push sync's own startup-to-first-archive time high
-	// enough that 150ms started landing before any message was archived
-	// at all. 400ms restores a comfortable window without risking the
-	// opposite failure (sync finishing before SIGKILL lands).
-	time.Sleep(400 * time.Millisecond)
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && countEmailsTolerant(dbPath) < targetCount {
+		time.Sleep(5 * time.Millisecond)
+	}
 
 	if err := cmd.Process.Kill(); err != nil {
 		t.Fatalf("SIGKILLing sync process: %v", err)
 	}
 	_ = cmd.Wait() // expected to report the process was killed; nothing to assert on the error itself
-	t.Logf("killed sync mid-flight, partial output:\n%s", out.String())
+	t.Logf("killed sync at target count %d, partial output:\n%s", targetCount, out.String())
+}
+
+// countEmailsTolerant is countEmails without failing the test on error —
+// used only by killAtCount's polling loop, where the database file may not
+// exist yet (the subprocess hasn't reached db.Open) or a query may
+// transiently fail while the subprocess holds the Single Writer lock; both
+// just mean "not there yet, keep polling" rather than a real problem.
+func countEmailsTolerant(dbPath string) int {
+	db, err := sql.Open("sqlite", "file:"+dbPath+"?_pragma=busy_timeout(1000)")
+	if err != nil {
+		return 0
+	}
+	defer db.Close()
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM emails`).Scan(&n); err != nil {
+		return 0
+	}
+	return n
 }
 
 func openTestDB(t *testing.T, dbPath string) *sql.DB {

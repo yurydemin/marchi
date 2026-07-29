@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    # Grouped so a routine sweep of patch/minor bumps across ~90
+    # dependencies (see the license audit in Ф4 Шаг 9) lands as one PR
+    # for CI to validate, not dozens — a major bump is excluded from the
+    # group and left as its own PR, since those are exactly the ones
+    # worth reviewing individually rather than batching through.
+    groups:
+      go-dependencies:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10

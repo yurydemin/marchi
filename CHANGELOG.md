@@ -3,6 +3,26 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — на
 [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [Unreleased]
+
+### Добавлено
+
+- `http.trusted_proxies` — список IP/подсетей reverse-proxy, чьему `X-Forwarded-For`
+  можно доверять (нужно для корректной работы прогрессивной блокировки `/unlock` и
+  аудит-лога за nginx/Traefik). Подробности — [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md).
+- `SECURITY.md` — как сообщить об уязвимости.
+- Релизы теперь подписываются keyless-подписью (Sigstore/cosign через GitHub Actions
+  OIDC) и сопровождаются SBOM (SPDX) для каждого архива.
+- Dependabot следит за обновлениями Go-модулей и GitHub Actions.
+- Новый раздел «Политика 0.x и совместимость» в [USER_GUIDE.md](docs/USER_GUIDE.md) —
+  что может меняться между минорными версиями, плюс измеренные ориентиры по скорости
+  синхронизации/переиндексации и объёму архива на диске.
+
+### Изменено
+
+- Тест на устойчивость к падению (`marchi sync`, `SIGKILL`) теперь проверяет три разные
+  точки обрыва (в начале/середине/ближе к концу синхронизации), а не одну.
+
 ## [0.6.0] — 2026-07-29
 
 ### Добавлено

@@ -11,6 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # id-token: write is what lets cosign sign keylessly against
+      # Sigstore's Fulcio/Rekor using this job's own short-lived GitHub
+      # OIDC token — no signing key stored as a repo secret at all.
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,6 +24,11 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
+
+      # sboms:/signs: in .goreleaser.yaml shell out to these two tools
+      # directly; goreleaser doesn't bundle either.
+      - uses: anchore/sbom-action/download-syft@v0
+      - uses: sigstore/cosign-installer@v3
 
       - uses: goreleaser/goreleaser-action@v6
         with:

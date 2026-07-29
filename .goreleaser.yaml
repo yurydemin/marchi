@@ -42,6 +42,36 @@ archives:
 checksum:
   name_template: checksums.txt
 
+# SPDX SBOM per archive (goreleaser's own default format for this
+# pipe), generated via syft (must be on PATH in the release job — see
+# .github/workflows/release.yml). Lets anyone auditing a release
+# cross-check exactly which module versions actually went into the
+# binary they're running (all ~90, matching Ф4 Шаг 9's license audit),
+# without having to reconstruct it from go.sum by hand.
+sboms:
+  - id: archive-sbom
+    artifacts: archive
+
+# Keyless signing (Sigstore/cosign, via GitHub Actions OIDC — no private
+# key for this project to generate, store, or ever risk leaking) of
+# checksums.txt: since every archive is already listed in checksums.txt
+# by digest, a verified signature on that one file transitively vouches
+# for every archive it references, without needing one signature per
+# archive. `--yes` skips cosign's interactive confirmation, which has no
+# terminal to prompt on in CI.
+signs:
+  - id: checksums-sig
+    cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - --yes
+    artifacts: checksum
+    output: true
+
 # Disabled rather than filtered: a raw per-commit list (even filtered)
 # reads as noise on the release page next to the hand-written summary
 # release.footer below points readers to instead. CHANGELOG.md in the

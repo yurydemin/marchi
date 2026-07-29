@@ -132,6 +132,7 @@ sudo systemctl enable --now marchi
 | `app.data_dir` | `./data` | Корень для БД, Maildir, индекса, TLS-сертификата, логов |
 | `http.host` / `http.port` | `127.0.0.1` / `8080` | Адрес Web UI. В Docker нужно `0.0.0.0`, иначе порт не будет доступен снаружи контейнера |
 | `http.tls.enabled` / `auto_cert` | `true` / `true` | Самоподписанный TLS, генерируется в `{data_dir}/tls` |
+| `http.trusted_proxies` | не задано | IP/подсети reverse-proxy, чьему `X-Forwarded-For` можно доверять — см. [Работа за reverse-proxy](docs/REVERSE_PROXY.md) |
 | `security.master_key_env` | `MARCHI_MASTER_KEY` | Имя переменной окружения для unattended-разблокировки |
 | `app.log_output` | `both` | Куда пишутся логи: `file` (только `{data_dir}/logs`), `stdout` (только консоль — физически stderr, чтобы не засорять stdout вывод команд вроде `config show`; виден в `docker logs`/`journalctl -u marchi`), `both` |
 | `sync.default_schedule` | `0 */6 * * *` | Cron-расписание автосинхронизации по умолчанию (переопределяется на уровне аккаунта) |
@@ -195,6 +196,9 @@ Go 1.25, Fiber (HTTP), `modernc.org/sqlite` (чистый Go, без CGO), Bluge
 
 - [User Guide](docs/USER_GUIDE.md) — пошаговое руководство пользователя.
 - [OpenAPI-спецификация](docs/api/openapi.yaml) — REST API `/api/v1/*`.
+- [Работа за reverse-proxy](docs/REVERSE_PROXY.md) — nginx/Traefik, TLS-offload,
+  доверенные прокси-заголовки, ограничения по path.
+- [SECURITY.md](SECURITY.md) — как сообщить об уязвимости.
 - [CHANGELOG.md](CHANGELOG.md) — история релизов.
 
 ## Лицензия
