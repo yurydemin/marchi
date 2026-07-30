@@ -110,6 +110,37 @@ func TestAddOAuth2Account_GmailAPIConnector_RequiresGoogleProvider(t *testing.T)
 	}
 }
 
+func TestAddOAuth2Account_MSGraphConnector_NoIMAPHostRequired(t *testing.T) {
+	mgr := openTestManager(t, testMasterKey(t))
+	a, err := mgr.AddOAuth2Account(context.Background(), AddOAuth2AccountParams{
+		Email: "user@outlook.com", Provider: domain.OAuth2ProviderMicrosoft,
+		ConnectorType: domain.ConnectorMSGraph, Token: oauth2pkg.Token{AccessToken: "tok"},
+	})
+	if err != nil {
+		t.Fatalf("AddOAuth2Account: %v", err)
+	}
+	if a.ConnectorType != domain.ConnectorMSGraph {
+		t.Errorf("ConnectorType = %q, want %q", a.ConnectorType, domain.ConnectorMSGraph)
+	}
+	if a.IMAPHost != msgraphPlaceholderIMAPHost {
+		t.Errorf("IMAPHost = %q, want the placeholder %q", a.IMAPHost, msgraphPlaceholderIMAPHost)
+	}
+	if a.IMAPUsername != "" {
+		t.Errorf("IMAPUsername = %q, want empty (never defaulted for a ms_graph account)", a.IMAPUsername)
+	}
+}
+
+func TestAddOAuth2Account_MSGraphConnector_RequiresMicrosoftProvider(t *testing.T) {
+	mgr := openTestManager(t, testMasterKey(t))
+	_, err := mgr.AddOAuth2Account(context.Background(), AddOAuth2AccountParams{
+		Email: "user@gmail.com", Provider: domain.OAuth2ProviderGoogle,
+		ConnectorType: domain.ConnectorMSGraph, Token: oauth2pkg.Token{AccessToken: "tok"},
+	})
+	if err == nil {
+		t.Error("expected an error for ms_graph connector with a non-microsoft provider")
+	}
+}
+
 func TestUpdateOAuth2Token_ReplacesTokenOnly(t *testing.T) {
 	mgr := openTestManager(t, testMasterKey(t))
 	ctx := context.Background()

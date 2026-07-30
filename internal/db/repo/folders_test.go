@@ -148,6 +148,65 @@ func TestFoldersRepo_GetByID_NotFound(t *testing.T) {
 	}
 }
 
+func TestFoldersRepo_MSGraphDeltaLink_DefaultsEmptyThenRoundTrips(t *testing.T) {
+	folders, accounts := openTestFoldersRepo(t)
+	accountID := mustCreateAccount(t, accounts)
+	ctx := context.Background()
+
+	f, err := folders.UpsertFolder(ctx, accountID, "Inbox", 1)
+	if err != nil {
+		t.Fatalf("UpsertFolder: %v", err)
+	}
+	if f.MSGraphDeltaLink != "" {
+		t.Errorf("MSGraphDeltaLink = %q, want empty", f.MSGraphDeltaLink)
+	}
+
+	link := "https://graph.microsoft.com/v1.0/me/mailFolders/x/messages/delta?$deltatoken=abc123"
+	if err := folders.UpdateMSGraphDeltaLink(ctx, f.ID, link); err != nil {
+		t.Fatalf("UpdateMSGraphDeltaLink: %v", err)
+	}
+
+	got, err := folders.GetByID(ctx, f.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.MSGraphDeltaLink != link {
+		t.Errorf("MSGraphDeltaLink = %q, want %q", got.MSGraphDeltaLink, link)
+	}
+
+	// UpsertFolder on the same folder (same uidvalidity) must not clobber
+	// the delta link — it's a different sync engine's cursor entirely,
+	// unrelated to the IMAP-style uidvalidity/last_uid reconciliation
+	// UpsertFolder performs.
+	f2, err := folders.UpsertFolder(ctx, accountID, "Inbox", 1)
+	if err != nil {
+		t.Fatalf("UpsertFolder (again): %v", err)
+	}
+	if f2.MSGraphDeltaLink != link {
+		t.Errorf("MSGraphDeltaLink after re-upsert = %q, want %q (unchanged)", f2.MSGraphDeltaLink, link)
+	}
+
+	if err := folders.UpdateMSGraphDeltaLink(ctx, f.ID, ""); err != nil {
+		t.Fatalf("UpdateMSGraphDeltaLink (clear): %v", err)
+	}
+	cleared, err := folders.GetByID(ctx, f.ID)
+	if err != nil {
+		t.Fatalf("GetByID after clearing: %v", err)
+	}
+	if cleared.MSGraphDeltaLink != "" {
+		t.Errorf("MSGraphDeltaLink after clearing = %q, want empty", cleared.MSGraphDeltaLink)
+	}
+}
+
+func TestFoldersRepo_UpdateMSGraphDeltaLink_UnknownID(t *testing.T) {
+	folders, _ := openTestFoldersRepo(t)
+
+	err := folders.UpdateMSGraphDeltaLink(context.Background(), 999999, "link")
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("err = %v, want sql.ErrNoRows", err)
+	}
+}
+
 func TestFoldersRepo_ListByAccount(t *testing.T) {
 	folders, accounts := openTestFoldersRepo(t)
 	accountID := mustCreateAccount(t, accounts)

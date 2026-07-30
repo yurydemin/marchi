@@ -143,14 +143,16 @@ type createOAuth2AccountRequest struct {
 	OAuth2ExpiresInSecs int    `json:"oauth2_expires_in_seconds" form:"oauth2_expires_in_seconds"` // 0 = unknown/never
 	OAuth2Scope         string `json:"oauth2_scope" form:"oauth2_scope"`
 	// ConnectorType selects "imap" (default, omit this field entirely for
-	// today's behavior) or "gmail_api" — a Gmail account synced through
-	// Google's native REST API instead of IMAP (internal/gmailapi). A
-	// gmail_api account ignores imap_host/imap_port/imap_tls/imap_username
-	// entirely and requires oauth2_provider "google". The access token
-	// must have been obtained with a scope covering the Gmail API (see
-	// internal/oauth2.GmailAPIScopes) — an IMAP-scoped token
-	// (https://mail.google.com/) works for IMAP accounts but is not
-	// broad enough for the Gmail API's own endpoints.
+	// today's behavior), "gmail_api" (internal/gmailapi — Google's native
+	// REST API instead of IMAP), or "ms_graph" (internal/msgraph —
+	// Microsoft Graph's native REST API instead of IMAP). A gmail_api/
+	// ms_graph account ignores imap_host/imap_port/imap_tls/imap_username
+	// entirely and requires oauth2_provider "google"/"microsoft"
+	// respectively. The access token must have been obtained with a scope
+	// covering the relevant API (see internal/oauth2.GmailAPIScopes /
+	// MSGraphScopes) — the IMAP-scoped tokens
+	// (https://mail.google.com/ / IMAP.AccessAsUser.All) work for IMAP
+	// accounts but are not broad enough for either REST API.
 	ConnectorType string `json:"connector_type" form:"connector_type"`
 }
 
@@ -178,10 +180,10 @@ func handleCreateOAuth2Account(vault *vaultState) fiber.Handler {
 		switch connectorType {
 		case "", domain.ConnectorIMAP:
 			connectorType = domain.ConnectorIMAP
-		case domain.ConnectorGmailAPI:
+		case domain.ConnectorGmailAPI, domain.ConnectorMSGraph:
 			// valid, handled by AddOAuth2Account below
 		default:
-			return fiber.NewError(fiber.StatusBadRequest, "unknown connector_type (want \"imap\" or \"gmail_api\")")
+			return fiber.NewError(fiber.StatusBadRequest, "unknown connector_type (want \"imap\", \"gmail_api\", or \"ms_graph\")")
 		}
 
 		a, err := b.manager.AddOAuth2Account(c.Context(), account.AddOAuth2AccountParams{

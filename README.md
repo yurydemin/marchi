@@ -16,6 +16,9 @@ IMAP-аккаунты, архивирует письма в фоне по нас
   Gmail REST API с дельта-синхронизацией (History API) вместо полного обхода UID; пока
   только через REST (`POST /api/v1/accounts/oauth2` с `"connector_type": "gmail_api"`),
   без формы в Web UI. Подробности — [docs/api/openapi.yaml](docs/api/openapi.yaml).
+- **MS Graph-коннектор**: аналогично для Microsoft 365/Exchange Online — синк через
+  Microsoft Graph REST API с реальными иерархическими папками (не как у Gmail — с метками)
+  и дельта-синхронизацией per-folder. `"connector_type": "ms_graph"` в том же эндпоинте.
 - **Правила архивации**: визуальный AND/OR-конструктор условий (тема, отправитель,
   домен, вложения, размер, дата, папка — 15 типов условий, вложенность до 3 уровней),
   действия `archive`/`skip`/`archive_and_delete`/`archive_and_mark_read`. Правила можно

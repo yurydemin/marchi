@@ -44,6 +44,13 @@ type ConnectorType string
 const (
 	ConnectorIMAP     ConnectorType = "imap"
 	ConnectorGmailAPI ConnectorType = "gmail_api"
+	// ConnectorMSGraph syncs a Microsoft 365/Exchange Online account
+	// through the Microsoft Graph REST API instead of IMAP — real
+	// hierarchical mail folders (unlike Gmail's labels), delta-query
+	// incremental sync scoped per folder (folders.msgraph_delta_link)
+	// instead of Gmail's single mailbox-wide history cursor. See
+	// internal/msgraph and internal/sync.SyncAccountMSGraph.
+	ConnectorMSGraph ConnectorType = "ms_graph"
 )
 
 // ParseIMAPTLSMode is String's inverse — shared by the CLI's --tls flag

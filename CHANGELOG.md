@@ -3,6 +3,26 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — на
 [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [0.9.0] — 2026-07-30
+
+### Добавлено
+
+- MS Graph-коннектор — альтернатива IMAP для Microsoft 365/Exchange Online-аккаунтов:
+  синхронизация через нативный Microsoft Graph REST API вместо IMAP-протокола. В отличие
+  от Gmail-коннектора, у Graph есть настоящие иерархические папки (Inbox, Sent Items,
+  Drafts, вложенные пользовательские папки) — каждая синкается как отдельная папка в
+  архиве, вложенные разворачиваются в имя вида `Родитель/Потомок` (тот же формат, что уже
+  использует Marchi для IMAP-папок). Дельта-синхронизация — через Graph delta query,
+  отдельным курсором на каждую папку (в отличие от единого курсора Gmail на весь ящик):
+  первый запрос без токена сразу возвращает и полный список писем, и токен для будущих
+  инкрементальных запросов — без отдельного шага вроде Gmail's предварительного снятия
+  historyId. Правила архивации работают как обычно: `archive_and_mark_read` ставит
+  `isRead=true`, `archive_and_delete` удаляет письмо (Graph переносит его в Deleted Items,
+  не стирает). Создать такой аккаунт можно через `POST /api/v1/accounts/oauth2` с
+  `"connector_type": "ms_graph"` (нужен OAuth2-токен с scope
+  `https://graph.microsoft.com/Mail.ReadWrite`, не тем же, что используется для IMAP) —
+  отдельной формы в Web UI для этого пока нет, как и для Gmail API-коннектора.
+
 ## [0.8.0] — 2026-07-30
 
 ### Добавлено
@@ -228,6 +248,7 @@
 - `govulncheck` в CI на каждый push/PR.
 - Аудит лицензий всех 89 зависимостей — MIT/Apache-2.0/BSD/MPL-2.0, копилефт-лицензий нет.
 
+[0.9.0]: https://github.com/yurydemin/marchi/releases/tag/v0.9.0
 [0.8.0]: https://github.com/yurydemin/marchi/releases/tag/v0.8.0
 [0.7.0]: https://github.com/yurydemin/marchi/releases/tag/v0.7.0
 [0.6.0]: https://github.com/yurydemin/marchi/releases/tag/v0.6.0

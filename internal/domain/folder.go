@@ -11,4 +11,10 @@ type Folder struct {
 	UIDValidity uint32
 	LastUID     uint32
 	SyncEnabled bool
+	// MSGraphDeltaLink is ConnectorMSGraph's incremental-sync cursor for
+	// this folder (Microsoft Graph's delta query — see
+	// internal/sync.SyncAccountMSGraph). Empty means no successful sync
+	// of this folder has completed yet. Meaningless for any other
+	// connector type.
+	MSGraphDeltaLink string
 }

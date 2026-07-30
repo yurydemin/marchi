@@ -25,6 +25,7 @@ import (
 	"github.com/yurydemin/marchi/internal/db/writer"
 	"github.com/yurydemin/marchi/internal/domain"
 	"github.com/yurydemin/marchi/internal/gmailapi"
+	"github.com/yurydemin/marchi/internal/msgraph"
 	"github.com/yurydemin/marchi/internal/notify"
 	"github.com/yurydemin/marchi/internal/retention"
 	"github.com/yurydemin/marchi/internal/search"
@@ -93,8 +94,12 @@ type Deps struct {
 	// Gmail — see internal/gmailapi's own package doc comment for why
 	// this project hand-rolls that client instead of a full Google SDK).
 	GmailAPIBaseURL string
-	Writer          writer.Writer
-	Host            string
+	// MSGraphBaseURL is GmailAPIBaseURL's counterpart for a
+	// ConnectorMSGraph account's msgraph.Client — same test-seam
+	// reasoning, see internal/msgraph's own package doc comment.
+	MSGraphBaseURL string
+	Writer         writer.Writer
+	Host           string
 	// Notifier, if nil, means failure notifications are disabled — the
 	// same nil-means-off convention RulesRepo/S3ConfigRepo/RetentionRunner
 	// above already use. Non-nil, it's called on sync failures, retention
@@ -317,7 +322,8 @@ func (s *Scheduler) syncOne(accountID int64, jobID string) {
 
 	var results []syncengine.FolderResult
 	var syncErr error
-	if a.ConnectorType == domain.ConnectorGmailAPI {
+	switch a.ConnectorType {
+	case domain.ConnectorGmailAPI:
 		accessToken, tokErr := s.deps.Manager.ResolveGmailAPIAccessToken(ctx, a, s.deps.OAuth2Refresher)
 		if tokErr != nil {
 			s.logger.Error("scheduler: resolving gmail api access token failed", zap.String("email", a.Email), zap.Error(tokErr))
@@ -329,7 +335,17 @@ func (s *Scheduler) syncOne(accountID int64, jobID string) {
 			s.deps.RulesRepo, idx, s.deps.S3ConfigRepo, s.deps.S3UploadQueueRepo, onProgress)
 		results = []syncengine.FolderResult{result}
 		syncErr = gmailErr
-	} else {
+	case domain.ConnectorMSGraph:
+		accessToken, tokErr := s.deps.Manager.ResolveMSGraphAccessToken(ctx, a, s.deps.OAuth2Refresher)
+		if tokErr != nil {
+			s.logger.Error("scheduler: resolving ms graph access token failed", zap.String("email", a.Email), zap.Error(tokErr))
+			return
+		}
+		client := &msgraph.Client{BaseURL: s.deps.MSGraphBaseURL, AccessToken: accessToken}
+		results, syncErr = syncengine.SyncAccountMSGraph(ctx, a, client, s.cfg.Storage.MaildirPath, s.deps.Host,
+			s.deps.Writer, s.deps.FoldersRepo, s.deps.EmailsRepo, s.deps.AttachmentsRepo, s.deps.SyncLogsRepo,
+			s.deps.RulesRepo, idx, s.deps.S3ConfigRepo, s.deps.S3UploadQueueRepo, onProgress)
+	default:
 		auth, err := s.deps.Manager.ResolveIMAPAuth(ctx, a, s.deps.OAuth2Refresher)
 		if err != nil {
 			s.logger.Error("scheduler: resolving imap auth failed", zap.String("email", a.Email), zap.Error(err))

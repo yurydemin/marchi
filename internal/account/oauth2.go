@@ -19,12 +19,16 @@ import (
 // by mistake.
 const gmailAPIPlaceholderIMAPHost = "gmail-api.invalid"
 
+// msgraphPlaceholderIMAPHost is gmailAPIPlaceholderIMAPHost's counterpart
+// for a ConnectorMSGraph account — same reasoning, different connector.
+const msgraphPlaceholderIMAPHost = "msgraph-api.invalid"
+
 // AddOAuth2AccountParams is the plaintext input for adding an OAuth2
 // account (FR-AM-01's Google/Microsoft path) — there's no IMAP password
 // for these at all; the OAuth2 token itself is what authenticates.
 // IMAPHost/IMAPPort/IMAPUsername are ignored when ConnectorType is
-// ConnectorGmailAPI (a Gmail API account never speaks IMAP — see
-// gmailAPIPlaceholderIMAPHost).
+// ConnectorGmailAPI or ConnectorMSGraph (neither ever speaks IMAP — see
+// gmailAPIPlaceholderIMAPHost/msgraphPlaceholderIMAPHost).
 type AddOAuth2AccountParams struct {
 	Email         string
 	DisplayName   string
@@ -55,9 +59,12 @@ func (m *Manager) AddOAuth2Account(ctx context.Context, p AddOAuth2AccountParams
 		ConnectorType: p.ConnectorType,
 	}
 
-	if p.ConnectorType == domain.ConnectorGmailAPI {
+	switch p.ConnectorType {
+	case domain.ConnectorGmailAPI:
 		a.IMAPHost = gmailAPIPlaceholderIMAPHost
-	} else {
+	case domain.ConnectorMSGraph:
+		a.IMAPHost = msgraphPlaceholderIMAPHost
+	default:
 		a.IMAPHost = p.IMAPHost
 		a.IMAPPort = p.IMAPPort
 		if a.IMAPPort == 0 {
@@ -167,6 +174,20 @@ func (m *Manager) ResolveGmailAPIAccessToken(ctx context.Context, a *domain.Acco
 	return tok.AccessToken, nil
 }
 
+// ResolveMSGraphAccessToken is ResolveIMAPAuth's counterpart for a
+// ConnectorMSGraph account: every such account authenticates purely via
+// OAuth2 (there's no IMAP password branch to consider), so this just
+// returns the resolved, refreshed-if-necessary access token
+// internal/msgraph.Client needs — identical in shape to
+// ResolveGmailAPIAccessToken, just for the other connector.
+func (m *Manager) ResolveMSGraphAccessToken(ctx context.Context, a *domain.Account, refresher OAuth2TokenRefresher) (string, error) {
+	tok, err := m.resolveOAuth2Token(ctx, a, refresher)
+	if err != nil {
+		return "", err
+	}
+	return tok.AccessToken, nil
+}
+
 // resolveOAuth2Token decrypts a's stored OAuth2 token and refreshes it
 // first if it's expired and a refresher was supplied — the shared dance
 // both ResolveIMAPAuth and ResolveGmailAPIAccessToken need. refresher may
@@ -197,10 +218,10 @@ func validateAddOAuth2AccountParams(p AddOAuth2AccountParams) error {
 	if strings.TrimSpace(p.Email) == "" {
 		return fmt.Errorf("account: email is required")
 	}
-	// A ConnectorGmailAPI account never connects via IMAP at all (see
-	// gmailAPIPlaceholderIMAPHost) — none of the IMAP-specific fields
-	// below apply to it.
-	if p.ConnectorType != domain.ConnectorGmailAPI {
+	// A ConnectorGmailAPI/ConnectorMSGraph account never connects via
+	// IMAP at all (see gmailAPIPlaceholderIMAPHost/msgraphPlaceholderIMAPHost)
+	// — none of the IMAP-specific fields below apply to it.
+	if p.ConnectorType != domain.ConnectorGmailAPI && p.ConnectorType != domain.ConnectorMSGraph {
 		if strings.TrimSpace(p.IMAPHost) == "" {
 			return fmt.Errorf("account: imap host is required")
 		}
@@ -213,6 +234,9 @@ func validateAddOAuth2AccountParams(p AddOAuth2AccountParams) error {
 	}
 	if p.ConnectorType == domain.ConnectorGmailAPI && p.Provider != domain.OAuth2ProviderGoogle {
 		return fmt.Errorf("account: connector_type gmail_api requires oauth2_provider google")
+	}
+	if p.ConnectorType == domain.ConnectorMSGraph && p.Provider != domain.OAuth2ProviderMicrosoft {
+		return fmt.Errorf("account: connector_type ms_graph requires oauth2_provider microsoft")
 	}
 	if p.Token.AccessToken == "" {
 		return fmt.Errorf("account: oauth2 access token is required")

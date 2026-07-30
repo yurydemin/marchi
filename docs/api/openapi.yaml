@@ -918,7 +918,7 @@ components:
         imap_tls: { type: string, enum: [none, ssl, starttls, unknown] }
         imap_username: { type: string }
         oauth2_provider: { type: string, nullable: true }
-        connector_type: { type: string, enum: [imap, gmail_api], description: "How this account is synced. gmail_api accounts ignore imap_host/imap_port/imap_tls/imap_username (always a placeholder) and sync via the Gmail REST API instead of IMAP." }
+        connector_type: { type: string, enum: [imap, gmail_api, ms_graph], description: "How this account is synced. gmail_api/ms_graph accounts ignore imap_host/imap_port/imap_tls/imap_username (always a placeholder) and sync via the Gmail/Microsoft Graph REST API instead of IMAP." }
         is_active: { type: boolean }
         sync_cron: { type: string, nullable: true }
         created_at: { type: string, format: date-time }
@@ -940,13 +940,13 @@ components:
       type: object
       required: [email, oauth2_provider, oauth2_access_token]
       description: >-
-        imap_host is required unless connector_type is "gmail_api" — a
-        gmail_api account never connects via IMAP at all, so
+        imap_host is required unless connector_type is "gmail_api" or
+        "ms_graph" — neither ever connects via IMAP at all, so
         imap_host/imap_port/imap_tls/imap_username are ignored if given.
       properties:
         email: { type: string, format: email }
         display_name: { type: string }
-        imap_host: { type: string, description: "Required unless connector_type is gmail_api." }
+        imap_host: { type: string, description: "Required unless connector_type is gmail_api or ms_graph." }
         imap_port: { type: integer }
         imap_tls: { type: string, enum: [none, ssl, starttls], default: ssl }
         imap_username: { type: string }
@@ -957,7 +957,7 @@ components:
         oauth2_scope: { type: string }
         connector_type:
           type: string
-          enum: [imap, gmail_api]
+          enum: [imap, gmail_api, ms_graph]
           default: imap
           description: >-
             "gmail_api" syncs this Google account through the Gmail REST
@@ -965,6 +965,11 @@ components:
             access token scoped for the Gmail API (e.g.
             https://www.googleapis.com/auth/gmail.modify), not the
             IMAP-wide https://mail.google.com/ scope.
+            "ms_graph" syncs this Microsoft account through the Graph
+            REST API instead of IMAP — requires oauth2_provider
+            "microsoft" and an access token scoped for Graph (e.g.
+            https://graph.microsoft.com/Mail.ReadWrite), not the
+            IMAP-wide IMAP.AccessAsUser.All scope.
 
     UpdateAccountRequest:
       type: object

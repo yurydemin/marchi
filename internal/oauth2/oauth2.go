@@ -51,6 +51,17 @@ var defaultScopes = map[string][]string{
 // the Gmail API (internal/gmailapi) rather than IMAP STORE/EXPUNGE.
 var GmailAPIScopes = []string{"https://www.googleapis.com/auth/gmail.modify"}
 
+// MSGraphScopes is what a ConnectorMSGraph account needs instead of
+// defaultScopes' Exchange-Online-IMAP-wide
+// https://outlook.office.com/IMAP.AccessAsUser.All: Mail.ReadWrite
+// covers reading messages (archiving) and the isRead/move-to-Deleted-Items
+// mutations FR-RE-03's archive_and_mark_read/archive_and_delete rule
+// actions perform through the Graph API (internal/msgraph) rather than
+// IMAP STORE/EXPUNGE. offline_access is still needed for the same reason
+// defaultScopes' Microsoft entry needs it — without it no refresh_token
+// comes back at all.
+var MSGraphScopes = []string{"https://graph.microsoft.com/Mail.ReadWrite", "offline_access"}
+
 func endpointFor(provider string) (oauth2.Endpoint, error) {
 	switch provider {
 	case domain.OAuth2ProviderGoogle:

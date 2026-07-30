@@ -38,20 +38,46 @@ func (r *FoldersRepo) UpsertFolder(ctx context.Context, accountID int64, folderN
 					WHEN folders.uidvalidity != excluded.uidvalidity THEN 0
 					ELSE folders.last_uid
 				END
-			RETURNING id, account_id, folder_name, uidvalidity, last_uid, sync_enabled`,
+			RETURNING id, account_id, folder_name, uidvalidity, last_uid, sync_enabled, msgraph_delta_link`,
 			accountID, folderName, uidValidity,
 		)
 		var syncEnabled int
-		if err := row.Scan(&f.ID, &f.AccountID, &f.FolderName, &f.UIDValidity, &f.LastUID, &syncEnabled); err != nil {
+		var deltaLink sql.NullString
+		if err := row.Scan(&f.ID, &f.AccountID, &f.FolderName, &f.UIDValidity, &f.LastUID, &syncEnabled, &deltaLink); err != nil {
 			return fmt.Errorf("repo: upserting folder %q: %w", folderName, err)
 		}
 		f.SyncEnabled = syncEnabled != 0
+		f.MSGraphDeltaLink = deltaLink.String
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &f, nil
+}
+
+// UpdateMSGraphDeltaLink replaces only folderID's msgraph_delta_link — the
+// narrow write internal/sync.SyncAccountMSGraph needs after a folder's
+// sync batch completes without error, mirroring
+// AccountsRepo.UpdateGmailHistoryID's reasoning (a dedicated narrow
+// write rather than folding into UpdateLastUID's per-message
+// transaction, since the cursor only advances once per folder per run,
+// not once per message).
+func (r *FoldersRepo) UpdateMSGraphDeltaLink(ctx context.Context, folderID int64, deltaLink string) error {
+	return r.w.Do(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE folders SET msgraph_delta_link = ? WHERE id = ?`, nullIfEmpty(deltaLink), folderID)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
+	})
 }
 
 // UpdateLastUID advances folderID's last_uid within an existing
@@ -74,10 +100,11 @@ func (r *FoldersRepo) UpdateLastUID(ctx context.Context, tx *sql.Tx, folderID in
 func (r *FoldersRepo) GetByID(ctx context.Context, id int64) (*domain.Folder, error) {
 	var f domain.Folder
 	var syncEnabled int
+	var deltaLink sql.NullString
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, account_id, folder_name, uidvalidity, last_uid, sync_enabled
+		SELECT id, account_id, folder_name, uidvalidity, last_uid, sync_enabled, msgraph_delta_link
 		FROM folders WHERE id = ?`, id,
-	).Scan(&f.ID, &f.AccountID, &f.FolderName, &f.UIDValidity, &f.LastUID, &syncEnabled)
+	).Scan(&f.ID, &f.AccountID, &f.FolderName, &f.UIDValidity, &f.LastUID, &syncEnabled, &deltaLink)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, err
@@ -85,13 +112,14 @@ func (r *FoldersRepo) GetByID(ctx context.Context, id int64) (*domain.Folder, er
 		return nil, fmt.Errorf("repo: getting folder %d: %w", id, err)
 	}
 	f.SyncEnabled = syncEnabled != 0
+	f.MSGraphDeltaLink = deltaLink.String
 	return &f, nil
 }
 
 // ListByAccount returns every folder recorded for accountID, alphabetically.
 func (r *FoldersRepo) ListByAccount(ctx context.Context, accountID int64) ([]*domain.Folder, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, account_id, folder_name, uidvalidity, last_uid, sync_enabled
+		SELECT id, account_id, folder_name, uidvalidity, last_uid, sync_enabled, msgraph_delta_link
 		FROM folders WHERE account_id = ? ORDER BY folder_name`, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("repo: listing folders: %w", err)
@@ -102,10 +130,12 @@ func (r *FoldersRepo) ListByAccount(ctx context.Context, accountID int64) ([]*do
 	for rows.Next() {
 		var f domain.Folder
 		var syncEnabled int
-		if err := rows.Scan(&f.ID, &f.AccountID, &f.FolderName, &f.UIDValidity, &f.LastUID, &syncEnabled); err != nil {
+		var deltaLink sql.NullString
+		if err := rows.Scan(&f.ID, &f.AccountID, &f.FolderName, &f.UIDValidity, &f.LastUID, &syncEnabled, &deltaLink); err != nil {
 			return nil, fmt.Errorf("repo: scanning folder: %w", err)
 		}
 		f.SyncEnabled = syncEnabled != 0
+		f.MSGraphDeltaLink = deltaLink.String
 		folders = append(folders, &f)
 	}
 	return folders, rows.Err()

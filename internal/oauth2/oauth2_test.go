@@ -113,6 +113,29 @@ func TestApp_AuthURL_GmailAPIScopesOverrideDefault(t *testing.T) {
 	}
 }
 
+func TestApp_AuthURL_MSGraphScopesOverrideDefault(t *testing.T) {
+	app := App{
+		Provider: domain.OAuth2ProviderMicrosoft, ClientID: "test-client-id",
+		ClientSecret: "test-client-secret", RedirectURL: "https://marchi.local/oauth2/microsoft/callback",
+	}
+	app.Scopes = MSGraphScopes
+	authURL, err := app.AuthURL("state")
+	if err != nil {
+		t.Fatalf("AuthURL: %v", err)
+	}
+	u, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parsing AuthURL result: %v", err)
+	}
+	scope := u.Query().Get("scope")
+	if !strings.Contains(scope, "Mail.ReadWrite") {
+		t.Errorf("scope = %q, want it to include Mail.ReadWrite", scope)
+	}
+	if strings.Contains(scope, "IMAP.AccessAsUser.All") {
+		t.Errorf("scope = %q, should not include the IMAP-wide default", scope)
+	}
+}
+
 func TestApp_AuthURL_NilScopesKeepsProviderDefault(t *testing.T) {
 	app := testApp() // Scopes left nil
 	authURL, err := app.AuthURL("state")
