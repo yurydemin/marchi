@@ -11,7 +11,7 @@ jobs:
     name: gofmt / vet / test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v7
         with:
@@ -43,7 +43,7 @@ jobs:
     name: govulncheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v7
         with:
@@ -59,7 +59,7 @@ jobs:
     name: css drift check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # web/static/css/app.css is a checked-in, pre-built Tailwind
       # bundle (see the Makefile's own comment) — this catches a
