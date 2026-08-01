@@ -72,6 +72,39 @@ type bulkRestoreRequest struct {
 	ScopeID          int64  `json:"scope_id"`
 	TargetAccountID  int64  `json:"target_account_id"`
 	TargetFolderRoot string `json:"target_folder_root"`
+	// DateFrom/DateTo optionally narrow scope's emails by Date before
+	// restoring — same RFC3339-or-YYYY-MM-DD format as GET /api/v1/search,
+	// both inclusive. Empty means unbounded on that side.
+	DateFrom string `json:"date_from,omitempty"`
+	DateTo   string `json:"date_to,omitempty"`
+}
+
+// parseOptionalDate parses v (if non-empty) with parseSearchDate, or
+// returns the zero time for an empty v — the caller's "unbounded" case.
+func parseOptionalDate(v, name string) (time.Time, error) {
+	if v == "" {
+		return time.Time{}, nil
+	}
+	t, err := parseSearchDate(v)
+	if err != nil {
+		return time.Time{}, badDateParam(name, v)
+	}
+	return t, nil
+}
+
+// emailDateInRange reports whether date falls within [from, to], treating a
+// zero from/to as unbounded on that side — mirrors internal/search's own
+// DateRangeInclusiveQuery zero-handling (internal/search/query.go), so a
+// date-filtered bulk restore agrees with what a date-filtered search would
+// have matched.
+func emailDateInRange(date, from, to time.Time) bool {
+	if !from.IsZero() && date.Before(from) {
+		return false
+	}
+	if !to.IsZero() && date.After(to) {
+		return false
+	}
+	return true
 }
 
 // joinRestoreFolder places sourceFolderName under root — used for a
@@ -112,6 +145,14 @@ func handleBulkRestore(vault *vaultState) fiber.Handler {
 			}
 			return fiber.NewError(fiber.StatusInternalServerError, "loading target account failed")
 		}
+		dateFrom, err := parseOptionalDate(req.DateFrom, "date_from")
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+		dateTo, err := parseOptionalDate(req.DateTo, "date_to")
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
 
 		var items []restoreItem
 		switch req.Scope {
@@ -127,9 +168,12 @@ func handleBulkRestore(vault *vaultState) fiber.Handler {
 			if err != nil {
 				return fiber.NewError(fiber.StatusInternalServerError, "listing folder emails failed")
 			}
-			items = make([]restoreItem, len(emails))
-			for i, e := range emails {
-				items[i] = restoreItem{EmailID: e.ID, TargetFolder: req.TargetFolderRoot}
+			items = make([]restoreItem, 0, len(emails))
+			for _, e := range emails {
+				if !emailDateInRange(e.Date, dateFrom, dateTo) {
+					continue
+				}
+				items = append(items, restoreItem{EmailID: e.ID, TargetFolder: req.TargetFolderRoot})
 			}
 		case "account":
 			if _, err := b.accountsRepo.GetByID(c.Context(), req.ScopeID); err != nil {
@@ -143,8 +187,11 @@ func handleBulkRestore(vault *vaultState) fiber.Handler {
 				return fiber.NewError(fiber.StatusInternalServerError, "listing account emails failed")
 			}
 			folderTargets := make(map[int64]string, len(emails))
-			items = make([]restoreItem, len(emails))
-			for i, e := range emails {
+			items = make([]restoreItem, 0, len(emails))
+			for _, e := range emails {
+				if !emailDateInRange(e.Date, dateFrom, dateTo) {
+					continue
+				}
 				target, ok := folderTargets[e.FolderID]
 				if !ok {
 					folder, err := b.foldersRepo.GetByID(c.Context(), e.FolderID)
@@ -154,7 +201,7 @@ func handleBulkRestore(vault *vaultState) fiber.Handler {
 					target = joinRestoreFolder(req.TargetFolderRoot, folder.FolderName)
 					folderTargets[e.FolderID] = target
 				}
-				items[i] = restoreItem{EmailID: e.ID, TargetFolder: target}
+				items = append(items, restoreItem{EmailID: e.ID, TargetFolder: target})
 			}
 		default:
 			return fiber.NewError(fiber.StatusBadRequest, `scope must be "account" or "folder"`)

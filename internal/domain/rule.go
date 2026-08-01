@@ -102,4 +102,11 @@ type Rule struct {
 	Action     RuleAction `yaml:"action"`
 	IsActive   bool       `yaml:"is_active"`
 	CreatedAt  time.Time  `yaml:"-"`
+	// MatchCount/LastMatchedAt are cumulative rule-firing statistics
+	// (P2-15) — how many times this rule has matched a message across
+	// every sync run of every account, and when it last did. Updated
+	// once per sync run, not once per message; see
+	// repo.RulesRepo.RecordMatches.
+	MatchCount    int       `yaml:"-"`
+	LastMatchedAt time.Time `yaml:"-"` // zero means never matched
 }

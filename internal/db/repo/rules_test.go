@@ -45,6 +45,89 @@ func sampleRule() *domain.Rule {
 	}
 }
 
+func TestRulesRepo_NewRule_MatchStatsDefaultToZeroAndNeverMatched(t *testing.T) {
+	repo := openTestRulesRepo(t)
+	ctx := context.Background()
+
+	id, err := repo.Create(ctx, sampleRule())
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	rule, err := repo.GetByID(ctx, id)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if rule.MatchCount != 0 {
+		t.Errorf("MatchCount = %d, want 0", rule.MatchCount)
+	}
+	if !rule.LastMatchedAt.IsZero() {
+		t.Errorf("LastMatchedAt = %v, want zero (never matched)", rule.LastMatchedAt)
+	}
+}
+
+func TestRulesRepo_RecordMatches_AccumulatesAcrossCalls(t *testing.T) {
+	repo := openTestRulesRepo(t)
+	ctx := context.Background()
+
+	id1, err := repo.Create(ctx, sampleRule())
+	if err != nil {
+		t.Fatalf("Create rule 1: %v", err)
+	}
+	rule2 := sampleRule()
+	rule2.Name = "Second rule"
+	id2, err := repo.Create(ctx, rule2)
+	if err != nil {
+		t.Fatalf("Create rule 2: %v", err)
+	}
+
+	if err := repo.RecordMatches(ctx, map[int64]int{id1: 3, id2: 1}); err != nil {
+		t.Fatalf("RecordMatches: %v", err)
+	}
+	if err := repo.RecordMatches(ctx, map[int64]int{id1: 2}); err != nil {
+		t.Fatalf("RecordMatches (second call): %v", err)
+	}
+
+	r1, err := repo.GetByID(ctx, id1)
+	if err != nil {
+		t.Fatalf("GetByID rule 1: %v", err)
+	}
+	if r1.MatchCount != 5 {
+		t.Errorf("rule 1 MatchCount = %d, want 5 (3 + 2 accumulated)", r1.MatchCount)
+	}
+	if r1.LastMatchedAt.IsZero() {
+		t.Error("rule 1 LastMatchedAt was not set")
+	}
+
+	r2, err := repo.GetByID(ctx, id2)
+	if err != nil {
+		t.Fatalf("GetByID rule 2: %v", err)
+	}
+	if r2.MatchCount != 1 {
+		t.Errorf("rule 2 MatchCount = %d, want 1 (untouched by the second call)", r2.MatchCount)
+	}
+}
+
+func TestRulesRepo_RecordMatches_EmptyMapIsNoop(t *testing.T) {
+	repo := openTestRulesRepo(t)
+	if err := repo.RecordMatches(context.Background(), nil); err != nil {
+		t.Errorf("RecordMatches(nil) = %v, want nil", err)
+	}
+	if err := repo.RecordMatches(context.Background(), map[int64]int{}); err != nil {
+		t.Errorf("RecordMatches({}) = %v, want nil", err)
+	}
+}
+
+func TestRulesRepo_RecordMatches_UnknownRuleIDIsIgnored(t *testing.T) {
+	repo := openTestRulesRepo(t)
+	// No rows affected for a nonexistent rule id is not an error —
+	// RecordMatches is a best-effort stats update, not a strict write
+	// with existence guarantees the caller depends on (unlike, say,
+	// UpdateLastUID's callers, which rely on the folder existing).
+	if err := repo.RecordMatches(context.Background(), map[int64]int{999999: 1}); err != nil {
+		t.Errorf("RecordMatches with an unknown rule id = %v, want nil", err)
+	}
+}
+
 func TestRulesRepo_CreateAndGetByID_RoundTripsConditionsTree(t *testing.T) {
 	repo := openTestRulesRepo(t)
 	ctx := context.Background()

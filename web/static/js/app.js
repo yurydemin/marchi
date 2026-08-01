@@ -453,18 +453,42 @@ document.addEventListener("click", function (evt) {
 
 function updateRestoreButtonState() {
   const btn = document.querySelector('[data-action="trigger-restore"]');
-  if (!btn) {
-    return;
+  if (btn) {
+    const anySelected = document.querySelectorAll(".restore-checkbox:checked").length > 0;
+    const account = document.getElementById("restore-target-account");
+    const folder = document.getElementById("restore-target-folder");
+    btn.disabled = !(anySelected && account && account.value && folder && folder.value);
   }
+  updateBulkActionsButtonState();
+}
+
+// updateBulkActionsButtonState governs the two selection-based actions that
+// reuse .restore-checkbox alongside restore (they share the same checkboxes
+// — "the selection" isn't restore-specific, it's just this page's one
+// selection mechanism): bulk-delete needs only a non-empty selection,
+// bulk-move additionally needs a target folder name typed in.
+function updateBulkActionsButtonState() {
   const anySelected = document.querySelectorAll(".restore-checkbox:checked").length > 0;
-  const account = document.getElementById("restore-target-account");
-  const folder = document.getElementById("restore-target-folder");
-  btn.disabled = !(anySelected && account && account.value && folder && folder.value);
+  const deleteBtn = document.querySelector('[data-action="trigger-bulk-delete"]');
+  if (deleteBtn) {
+    deleteBtn.disabled = !anySelected;
+  }
+  const moveBtn = document.querySelector('[data-action="trigger-bulk-move"]');
+  const folderNameInput = document.getElementById("bulk-move-target-folder-name");
+  if (moveBtn) {
+    moveBtn.disabled = !(anySelected && folderNameInput && folderNameInput.value.trim());
+  }
 }
 
 document.addEventListener("change", function (evt) {
-  if (evt.target.id === "restore-select-all") {
+  if (evt.target.hasAttribute("data-select-all")) {
+    // Two of these exist (desktop table header + mobile card list), only
+    // one visible at a time depending on viewport width — keep both in
+    // sync so switching layouts mid-session doesn't show a stale state.
     const checked = evt.target.checked;
+    document.querySelectorAll("[data-select-all]").forEach(function (cb) {
+      cb.checked = checked;
+    });
     document.querySelectorAll(".restore-checkbox").forEach(function (cb) {
       cb.checked = checked;
     });
@@ -491,6 +515,82 @@ document.addEventListener("change", function (evt) {
   }
   if (evt.target.id === "restore-target-folder") {
     updateRestoreButtonState();
+  }
+});
+
+document.addEventListener("input", function (evt) {
+  if (evt.target.id === "bulk-move-target-folder-name") {
+    updateBulkActionsButtonState();
+  }
+});
+
+// --- Archive page: bulk-delete / bulk-move selected results -------------
+//
+// Both reuse the .restore-checkbox selection above. Unlike restore, these
+// are synchronous (a local file operation + one DB write per item, no IMAP
+// round-trip) — no job-id/WS progress, just a plain fetch + full-page
+// reload on success so the results list (which may no longer match the
+// emails that were just deleted/moved) and the selection state both refresh.
+
+document.addEventListener("click", function (evt) {
+  const deleteBtn = evt.target.closest('[data-action="trigger-bulk-delete"]');
+  if (deleteBtn) {
+    if (!window.confirm(deleteBtn.dataset.confirm)) {
+      return;
+    }
+    const emailIDs = Array.from(document.querySelectorAll(".restore-checkbox:checked")).map(function (cb) {
+      return Number(cb.dataset.emailId);
+    });
+    const statusEl = document.getElementById("bulk-actions-status");
+    deleteBtn.disabled = true;
+    fetch("/api/v1/emails/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Csrf-Token": csrfToken() },
+      body: JSON.stringify({ email_ids: emailIDs }),
+    })
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error("bulk delete failed");
+        }
+        window.location.reload();
+      })
+      .catch(function () {
+        if (statusEl) {
+          statusEl.textContent = deleteBtn.dataset.labelFailed;
+        }
+        deleteBtn.disabled = false;
+      });
+    return;
+  }
+
+  const moveBtn = evt.target.closest('[data-action="trigger-bulk-move"]');
+  if (moveBtn) {
+    if (!window.confirm(moveBtn.dataset.confirm)) {
+      return;
+    }
+    const emailIDs = Array.from(document.querySelectorAll(".restore-checkbox:checked")).map(function (cb) {
+      return Number(cb.dataset.emailId);
+    });
+    const targetFolderName = document.getElementById("bulk-move-target-folder-name").value.trim();
+    const statusEl = document.getElementById("bulk-actions-status");
+    moveBtn.disabled = true;
+    fetch("/api/v1/emails/bulk-folder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Csrf-Token": csrfToken() },
+      body: JSON.stringify({ email_ids: emailIDs, target_folder_name: targetFolderName }),
+    })
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error("bulk move failed");
+        }
+        window.location.reload();
+      })
+      .catch(function () {
+        if (statusEl) {
+          statusEl.textContent = moveBtn.dataset.labelFailed;
+        }
+        moveBtn.disabled = false;
+      });
   }
 });
 
@@ -583,6 +683,8 @@ document.addEventListener("click", function (evt) {
   }
   const targetAccountID = Number(document.getElementById("bulk-restore-target-account").value);
   const targetFolderRoot = document.getElementById("bulk-restore-target-folder-root").value.trim();
+  const dateFrom = document.getElementById("bulk-restore-date-from").value;
+  const dateTo = document.getElementById("bulk-restore-date-to").value;
   const statusEl = document.getElementById("bulk-restore-status");
   const allButtons = document.querySelectorAll('[data-action="trigger-bulk-restore"]');
   allButtons.forEach(function (b) {
@@ -601,6 +703,8 @@ document.addEventListener("click", function (evt) {
           scope_id: Number(btn.dataset.scopeId),
           target_account_id: targetAccountID,
           target_folder_root: targetFolderRoot,
+          date_from: dateFrom,
+          date_to: dateTo,
         }),
       });
     })

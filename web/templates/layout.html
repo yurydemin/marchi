@@ -11,11 +11,11 @@
 </head>
 <body class="h-full bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-stone-100">
   <header class="border-b border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800">
-    <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+    <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-y-2 px-4 py-3">
       <span class="text-lg font-semibold">Marchi</span>
-      <div class="flex items-center gap-4 text-sm">
+      <div class="flex flex-wrap items-center gap-4 text-sm">
         {{if .Unlocked}}
-        <nav class="flex items-center gap-4">
+        <nav class="flex flex-wrap items-center gap-4">
           <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/">{{T "nav.dashboard"}}</a>
           <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/accounts">{{T "nav.accounts"}}</a>
           <a class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" href="/archive">{{T "nav.archive"}}</a>

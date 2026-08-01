@@ -27,8 +27,8 @@ proprietary dependencies.
 - [github.com/emersion/go-sasl](https://pkg.go.dev/github.com/emersion/go-sasl@v0.0.0-20200509203442-7bfe0ed36a21) v0.0.0-20200509203442-7bfe0ed36a21
 - [github.com/gofiber/contrib/websocket](https://pkg.go.dev/github.com/gofiber/contrib/websocket@v1.3.4) v1.3.4
 - [github.com/gofiber/fiber/v2](https://pkg.go.dev/github.com/gofiber/fiber/v2@v2.52.14) v2.52.14
-- [github.com/golang-migrate/migrate/v4](https://pkg.go.dev/github.com/golang-migrate/migrate/v4@v4.17.1) v4.17.1
-- [github.com/klauspost/compress](https://pkg.go.dev/github.com/klauspost/compress@v1.19.0) v1.19.0
+- [github.com/golang-migrate/migrate/v4](https://pkg.go.dev/github.com/golang-migrate/migrate/v4@v4.19.1) v4.19.1
+- [github.com/klauspost/compress](https://pkg.go.dev/github.com/klauspost/compress@v1.19.1) v1.19.1
 - [github.com/mattn/go-colorable](https://pkg.go.dev/github.com/mattn/go-colorable@v0.1.13) v0.1.13
 - [github.com/mattn/go-isatty](https://pkg.go.dev/github.com/mattn/go-isatty@v0.0.20) v0.0.20
 - [github.com/mattn/go-runewidth](https://pkg.go.dev/github.com/mattn/go-runewidth@v0.0.16) v0.0.16
@@ -51,18 +51,18 @@ proprietary dependencies.
 ## Apache License 2.0 (27)
 
 - [github.com/RoaringBitmap/roaring](https://pkg.go.dev/github.com/RoaringBitmap/roaring@v0.9.4) v0.9.4
-- [github.com/aws/aws-sdk-go-v2](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2@v1.42.1) v1.42.1
-- [github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream@v1.7.14) v1.7.14
-- [github.com/aws/aws-sdk-go-v2/credentials](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/credentials@v1.19.29) v1.19.29
-- [github.com/aws/aws-sdk-go-v2/internal/configsources](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/internal/configsources@v1.4.30) v1.4.30
-- [github.com/aws/aws-sdk-go-v2/internal/endpoints/v2](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/internal/endpoints/v2@v2.7.30) v2.7.30
-- [github.com/aws/aws-sdk-go-v2/internal/v4a](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/internal/v4a@v1.4.31) v1.4.31
-- [github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding@v1.13.13) v1.13.13
-- [github.com/aws/aws-sdk-go-v2/service/internal/checksum](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/internal/checksum@v1.9.23) v1.9.23
-- [github.com/aws/aws-sdk-go-v2/service/internal/presigned-url](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/internal/presigned-url@v1.13.30) v1.13.30
-- [github.com/aws/aws-sdk-go-v2/service/internal/s3shared](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/internal/s3shared@v1.19.31) v1.19.31
-- [github.com/aws/aws-sdk-go-v2/service/s3](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/s3@v1.105.2) v1.105.2
-- [github.com/aws/smithy-go](https://pkg.go.dev/github.com/aws/smithy-go@v1.27.3) v1.27.3
+- [github.com/aws/aws-sdk-go-v2](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2@v1.43.2) v1.43.2
+- [github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream@v1.7.15) v1.7.15
+- [github.com/aws/aws-sdk-go-v2/credentials](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/credentials@v1.19.32) v1.19.32
+- [github.com/aws/aws-sdk-go-v2/internal/configsources](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/internal/configsources@v1.4.33) v1.4.33
+- [github.com/aws/aws-sdk-go-v2/internal/endpoints/v2](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/internal/endpoints/v2@v2.7.33) v2.7.33
+- [github.com/aws/aws-sdk-go-v2/internal/v4a](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/internal/v4a@v1.4.34) v1.4.34
+- [github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding@v1.13.14) v1.13.14
+- [github.com/aws/aws-sdk-go-v2/service/internal/checksum](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/internal/checksum@v1.9.26) v1.9.26
+- [github.com/aws/aws-sdk-go-v2/service/internal/presigned-url](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/internal/presigned-url@v1.13.33) v1.13.33
+- [github.com/aws/aws-sdk-go-v2/service/internal/s3shared](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/internal/s3shared@v1.19.34) v1.19.34
+- [github.com/aws/aws-sdk-go-v2/service/s3](https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/s3@v1.106.2) v1.106.2
+- [github.com/aws/smithy-go](https://pkg.go.dev/github.com/aws/smithy-go@v1.27.5) v1.27.5
 - [github.com/blevesearch/segment](https://pkg.go.dev/github.com/blevesearch/segment@v0.9.0) v0.9.0
 - [github.com/blevesearch/vellum](https://pkg.go.dev/github.com/blevesearch/vellum@v1.0.7) v1.0.7
 - [github.com/blugelabs/bluge](https://pkg.go.dev/github.com/blugelabs/bluge@v0.2.2) v0.2.2
@@ -71,9 +71,9 @@ proprietary dependencies.
 - [github.com/blugelabs/ice/v2](https://pkg.go.dev/github.com/blugelabs/ice/v2@v2.0.1) v2.0.1
 - [github.com/inconshreveable/mousetrap](https://pkg.go.dev/github.com/inconshreveable/mousetrap@v1.1.0) v1.1.0
 - [github.com/mschoch/smat](https://pkg.go.dev/github.com/mschoch/smat@v0.2.0) v0.2.0
-- [github.com/prometheus/client_golang](https://pkg.go.dev/github.com/prometheus/client_golang@v1.24.0) v1.24.0
+- [github.com/prometheus/client_golang](https://pkg.go.dev/github.com/prometheus/client_golang@v1.24.1) v1.24.1
 - [github.com/prometheus/client_model](https://pkg.go.dev/github.com/prometheus/client_model@v0.6.2) v0.6.2
-- [github.com/prometheus/common](https://pkg.go.dev/github.com/prometheus/common@v0.70.0) v0.70.0
+- [github.com/prometheus/common](https://pkg.go.dev/github.com/prometheus/common@v0.70.1) v0.70.1
 - [github.com/prometheus/procfs](https://pkg.go.dev/github.com/prometheus/procfs@v0.21.1) v0.21.1
 - [github.com/savsgio/gotils](https://pkg.go.dev/github.com/savsgio/gotils@v0.0.0-20240303185622-093b76447511) v0.0.0-20240303185622-093b76447511
 - [github.com/spf13/cobra](https://pkg.go.dev/github.com/spf13/cobra@v1.10.2) v1.10.2
@@ -103,7 +103,7 @@ proprietary dependencies.
 - [modernc.org/libc](https://pkg.go.dev/modernc.org/libc@v1.74.2) v1.74.2
 - [modernc.org/mathutil](https://pkg.go.dev/modernc.org/mathutil@v1.7.1) v1.7.1
 - [modernc.org/memory](https://pkg.go.dev/modernc.org/memory@v1.11.0) v1.11.0
-- [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite@v1.54.0) v1.54.0
+- [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite@v1.55.0) v1.55.0
 
 ## Mozilla Public License 2.0 (2)
 

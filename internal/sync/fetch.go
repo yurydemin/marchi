@@ -66,6 +66,23 @@ type FetchStats struct {
 	// treated as fatal — the source message just keeps whatever flag it
 	// already had.
 	RuleActionErrors int
+	// RuleMatches counts, per matched rule id, how many messages FirstMatch
+	// matched it against during this folder's fetch — accumulated in
+	// memory and flushed to repo.RulesRepo.RecordMatches once per sync
+	// run (see SyncAccount), not once per message, so per-message rule
+	// evaluation never turns into a per-message database write (P2-15).
+	RuleMatches map[int64]int
+}
+
+// addRuleMatch records one match for ruleID into stats.RuleMatches,
+// creating the map lazily — most folders match at most a handful of
+// distinct rules, so there's no reason to allocate this up front for
+// every fetch.
+func (s *FetchStats) addRuleMatch(ruleID int64) {
+	if s.RuleMatches == nil {
+		s.RuleMatches = make(map[int64]int)
+	}
+	s.RuleMatches[ruleID]++
 }
 
 // FetchNewMessages selects folder on c and fetches every message with UID
@@ -171,6 +188,7 @@ func FetchNewMessages(
 		action := domain.ActionArchive
 		if matched := rules.FirstMatch(activeRules, candidateFrom(md, attachments, raw, folder.FolderName, accountID)); matched != nil {
 			action = matched.Action
+			stats.addRuleMatch(matched.ID)
 		}
 
 		if action == domain.ActionSkip {

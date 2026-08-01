@@ -207,6 +207,90 @@ func TestFoldersRepo_UpdateMSGraphDeltaLink_UnknownID(t *testing.T) {
 	}
 }
 
+func TestFoldersRepo_GetOrCreateManual_CreatesNewFolder(t *testing.T) {
+	folders, accounts := openTestFoldersRepo(t)
+	accountID := mustCreateAccount(t, accounts)
+	ctx := context.Background()
+
+	var f *domain.Folder
+	err := folders.w.Do(ctx, func(tx *sql.Tx) error {
+		var err error
+		f, err = folders.GetOrCreateManual(ctx, tx, accountID, "Reorganized")
+		return err
+	})
+	if err != nil {
+		t.Fatalf("GetOrCreateManual: %v", err)
+	}
+	if f.FolderName != "Reorganized" || f.AccountID != accountID {
+		t.Errorf("f = %+v, want FolderName=Reorganized AccountID=%d", f, accountID)
+	}
+	if f.UIDValidity != 0 || f.LastUID != 0 {
+		t.Errorf("UIDValidity=%d LastUID=%d, want both 0 for a manually-created folder", f.UIDValidity, f.LastUID)
+	}
+	if f.SyncEnabled {
+		t.Error("expected SyncEnabled false — a manual folder isn't tied to a live source")
+	}
+}
+
+func TestFoldersRepo_GetOrCreateManual_ReturnsExistingFolderUntouched(t *testing.T) {
+	folders, accounts := openTestFoldersRepo(t)
+	accountID := mustCreateAccount(t, accounts)
+	ctx := context.Background()
+
+	// A real, actively-synced folder with real bookkeeping already advanced.
+	real, err := folders.UpsertFolder(ctx, accountID, "Archive", 100)
+	if err != nil {
+		t.Fatalf("UpsertFolder: %v", err)
+	}
+	if _, err := folders.db.ExecContext(ctx, `UPDATE folders SET last_uid = 42 WHERE id = ?`, real.ID); err != nil {
+		t.Fatalf("simulating advanced last_uid: %v", err)
+	}
+
+	var f *domain.Folder
+	err = folders.w.Do(ctx, func(tx *sql.Tx) error {
+		var err error
+		f, err = folders.GetOrCreateManual(ctx, tx, accountID, "Archive")
+		return err
+	})
+	if err != nil {
+		t.Fatalf("GetOrCreateManual: %v", err)
+	}
+	if f.ID != real.ID {
+		t.Fatalf("got a different folder (id=%d), want the existing one (id=%d)", f.ID, real.ID)
+	}
+	if f.UIDValidity != 100 {
+		t.Errorf("UIDValidity = %d, want 100 untouched (not reset by a manual-folder lookup)", f.UIDValidity)
+	}
+	if f.LastUID != 42 {
+		t.Errorf("LastUID = %d, want 42 untouched — GetOrCreateManual must never disturb a real folder's sync bookkeeping", f.LastUID)
+	}
+}
+
+func TestFoldersRepo_GetOrCreateManual_IdempotentAcrossCalls(t *testing.T) {
+	folders, accounts := openTestFoldersRepo(t)
+	accountID := mustCreateAccount(t, accounts)
+	ctx := context.Background()
+
+	getOrCreate := func() *domain.Folder {
+		var f *domain.Folder
+		err := folders.w.Do(ctx, func(tx *sql.Tx) error {
+			var err error
+			f, err = folders.GetOrCreateManual(ctx, tx, accountID, "Reorganized")
+			return err
+		})
+		if err != nil {
+			t.Fatalf("GetOrCreateManual: %v", err)
+		}
+		return f
+	}
+
+	first := getOrCreate()
+	second := getOrCreate()
+	if first.ID != second.ID {
+		t.Errorf("second call created a new folder (id=%d), want the same one (id=%d)", second.ID, first.ID)
+	}
+}
+
 func TestFoldersRepo_ListByAccount(t *testing.T) {
 	folders, accounts := openTestFoldersRepo(t)
 	accountID := mustCreateAccount(t, accounts)

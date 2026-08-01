@@ -74,6 +74,34 @@ func (r *RulesRepo) Update(ctx context.Context, rule *domain.Rule) error {
 	})
 }
 
+// RecordMatches increments match_count and refreshes last_matched_at for
+// every rule in counts (rule id -> number of times it matched during one
+// sync run) — called once per sync run, not once per message, so
+// per-message rule evaluation never turns into a per-message database
+// write (see internal/sync's rule-match aggregation in each connector's
+// sync engine). Best-effort by convention at the caller: a failure here
+// should be logged and swallowed, the same way search-index and
+// audit-log writes already are — losing a stats update is never worth
+// failing an otherwise-successful sync over.
+func (r *RulesRepo) RecordMatches(ctx context.Context, counts map[int64]int) error {
+	if len(counts) == 0 {
+		return nil
+	}
+	return r.w.Do(ctx, func(tx *sql.Tx) error {
+		for ruleID, n := range counts {
+			if n <= 0 {
+				continue
+			}
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE rules SET match_count = match_count + ?, last_matched_at = CURRENT_TIMESTAMP
+				WHERE id = ?`, n, ruleID); err != nil {
+				return fmt.Errorf("repo: recording match for rule %d: %w", ruleID, err)
+			}
+		}
+		return nil
+	})
+}
+
 // Delete removes the rule identified by id.
 func (r *RulesRepo) Delete(ctx context.Context, id int64) error {
 	return r.w.Do(ctx, func(tx *sql.Tx) error {
@@ -97,7 +125,7 @@ func (r *RulesRepo) Delete(ctx context.Context, id int64) error {
 // among equal priorities.
 func (r *RulesRepo) List(ctx context.Context) ([]*domain.Rule, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, priority, conditions_json, action, is_active, created_at
+		SELECT id, name, priority, conditions_json, action, is_active, created_at, match_count, last_matched_at
 		FROM rules ORDER BY priority ASC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("repo: listing rules: %w", err)
@@ -121,7 +149,7 @@ func (r *RulesRepo) List(ctx context.Context) ([]*domain.Rule, error) {
 // disabled rules on every message.
 func (r *RulesRepo) ListActive(ctx context.Context) ([]*domain.Rule, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, priority, conditions_json, action, is_active, created_at
+		SELECT id, name, priority, conditions_json, action, is_active, created_at, match_count, last_matched_at
 		FROM rules WHERE is_active = 1 ORDER BY priority ASC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("repo: listing active rules: %w", err)
@@ -142,7 +170,7 @@ func (r *RulesRepo) ListActive(ctx context.Context) ([]*domain.Rule, error) {
 // GetByID returns the rule with the given id, or sql.ErrNoRows.
 func (r *RulesRepo) GetByID(ctx context.Context, id int64) (*domain.Rule, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, name, priority, conditions_json, action, is_active, created_at
+		SELECT id, name, priority, conditions_json, action, is_active, created_at, match_count, last_matched_at
 		FROM rules WHERE id = ?`, id)
 	return scanRule(row)
 }
@@ -153,10 +181,11 @@ func scanRule(row rowScanner) (*domain.Rule, error) {
 		conditionsJSON, action string
 		isActive               int
 		createdAt              string
+		lastMatchedAt          sql.NullString
 	)
 	err := row.Scan(
 		&rule.ID, &rule.Name, &rule.Priority, &conditionsJSON, &action,
-		&isActive, &createdAt,
+		&isActive, &createdAt, &rule.MatchCount, &lastMatchedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -174,6 +203,11 @@ func scanRule(row rowScanner) (*domain.Rule, error) {
 	rule.CreatedAt, err = parseSQLiteTime(createdAt)
 	if err != nil {
 		return nil, fmt.Errorf("repo: parsing created_at: %w", err)
+	}
+	if lastMatchedAt.Valid {
+		if rule.LastMatchedAt, err = parseSQLiteTime(lastMatchedAt.String); err != nil {
+			return nil, fmt.Errorf("repo: parsing last_matched_at: %w", err)
+		}
 	}
 
 	return &rule, nil

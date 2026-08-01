@@ -12,6 +12,7 @@ const (
 	AuditEventUnlock      AuditEventType = "unlock"
 	AuditEventRestore     AuditEventType = "restore"
 	AuditEventEmailDelete AuditEventType = "email_delete"
+	AuditEventEmailMove   AuditEventType = "email_folder_move"
 	AuditEventRuleCreate  AuditEventType = "rule_create"
 	AuditEventRuleUpdate  AuditEventType = "rule_update"
 	AuditEventRuleDelete  AuditEventType = "rule_delete"

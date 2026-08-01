@@ -427,6 +427,38 @@ func TestSyncAccountGmailAPI_ArchiveAndDeleteRuleTrashesMessage(t *testing.T) {
 	}
 }
 
+func TestSyncAccountGmailAPI_RecordsRuleMatchInRulesRepo(t *testing.T) {
+	env := newGmailTestEnv(t)
+	ruleID, err := env.rulesR.Create(context.Background(), &domain.Rule{
+		Name: "mark newsletters read", Priority: 1, IsActive: true, Action: domain.ActionArchiveAndMarkRead,
+		Conditions: domain.RuleNode{Type: domain.ConditionSubjectContains, Value: "newsletter"},
+	})
+	if err != nil {
+		t.Fatalf("creating rule: %v", err)
+	}
+
+	srv := newFakeGmailServer()
+	srv.addMessage("m1", []string{"INBOX", "UNREAD"}, gmailTestMessage("newsletter digest"))
+	client := srv.start(t)
+
+	a, _ := env.accountsR.GetByID(context.Background(), env.accountID)
+	if _, err := SyncAccountGmailAPI(context.Background(), a, client, env.maildirRoot, "test-host",
+		env.w, env.accountsR, env.foldersR, env.emailsR, env.attachmentsR, env.syncLogsR, env.rulesR, nil, nil, nil, nil); err != nil {
+		t.Fatalf("SyncAccountGmailAPI: %v", err)
+	}
+
+	rule, err := env.rulesR.GetByID(context.Background(), ruleID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if rule.MatchCount != 1 {
+		t.Errorf("MatchCount = %d, want 1", rule.MatchCount)
+	}
+	if rule.LastMatchedAt.IsZero() {
+		t.Error("LastMatchedAt was not set")
+	}
+}
+
 func TestSyncAccountGmailAPI_ArchiveAndMarkReadRuleRemovesUnreadLabel(t *testing.T) {
 	env := newGmailTestEnv(t)
 	if _, err := env.rulesR.Create(context.Background(), &domain.Rule{

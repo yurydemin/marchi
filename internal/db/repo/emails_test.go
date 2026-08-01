@@ -488,6 +488,114 @@ func TestEmailsRepo_ExistsByAccountMessageID(t *testing.T) {
 // restored failed outright with a FOREIGN KEY constraint error under
 // PRAGMA foreign_keys=ON — exactly the path the manual "delete from
 // archive" API (DELETE /api/v1/emails/{id}) exercises.
+func TestEmailsRepo_NextManualMoveUID_StartsAtBaseThenIncrements(t *testing.T) {
+	emails, folders, accounts, w := openTestEmailsRepo(t)
+	ctx := context.Background()
+	accountID := mustCreateAccount(t, accounts)
+	target := mustCreateFolder(t, folders, accountID, "Reorganized")
+
+	var first, second uint32
+	err := w.Do(ctx, func(tx *sql.Tx) error {
+		var err error
+		first, err = emails.NextManualMoveUID(ctx, tx, target.ID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("NextManualMoveUID (empty folder): %v", err)
+	}
+	if first != manualMoveUIDBase {
+		t.Errorf("first = %d, want %d (the base, folder has no rows yet)", first, manualMoveUIDBase)
+	}
+
+	// A real, low-numbered UID already sitting in this folder (as if it
+	// were also, coincidentally, a live-synced folder) must not affect the
+	// synthetic range at all.
+	insertEmail(t, emails, w, accountID, target.ID, 7)
+
+	err = w.Do(ctx, func(tx *sql.Tx) error {
+		var err error
+		second, err = emails.NextManualMoveUID(ctx, tx, target.ID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("NextManualMoveUID (with a real low uid present): %v", err)
+	}
+	if second != manualMoveUIDBase {
+		t.Errorf("second = %d, want %d — a real uid=7 row must not shift the synthetic base", second, manualMoveUIDBase)
+	}
+
+	// Occupy the synthetic uid NextManualMoveUID just handed back, as if a
+	// previous bulk-move had already assigned it.
+	insertEmail(t, emails, w, accountID, target.ID, second)
+
+	var third uint32
+	err = w.Do(ctx, func(tx *sql.Tx) error {
+		var err error
+		third, err = emails.NextManualMoveUID(ctx, tx, target.ID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("NextManualMoveUID (after one synthetic uid assigned): %v", err)
+	}
+	if third != manualMoveUIDBase+1 {
+		t.Errorf("third = %d, want %d (one past the highest synthetic uid so far)", third, manualMoveUIDBase+1)
+	}
+}
+
+func TestEmailsRepo_UpdateFolderAssignment(t *testing.T) {
+	emails, folders, accounts, w := openTestEmailsRepo(t)
+	ctx := context.Background()
+	accountID := mustCreateAccount(t, accounts)
+	source := mustCreateFolder(t, folders, accountID, "INBOX")
+	target := mustCreateFolder(t, folders, accountID, "Reorganized")
+
+	emailID := insertEmail(t, emails, w, accountID, source.ID, 1)
+
+	if err := w.Do(ctx, func(tx *sql.Tx) error {
+		return emails.UpdateFolderAssignment(ctx, tx, emailID, target.ID, manualMoveUIDBase, "/data/maildir/accounts/1/mail/Reorganized/new/moved.eml")
+	}); err != nil {
+		t.Fatalf("UpdateFolderAssignment: %v", err)
+	}
+
+	got, err := emails.GetByID(ctx, emailID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.FolderID != target.ID {
+		t.Errorf("FolderID = %d, want %d", got.FolderID, target.ID)
+	}
+	if got.UID != manualMoveUIDBase {
+		t.Errorf("UID = %d, want %d", got.UID, manualMoveUIDBase)
+	}
+	if got.LocalPath != "/data/maildir/accounts/1/mail/Reorganized/new/moved.eml" {
+		t.Errorf("LocalPath = %q", got.LocalPath)
+	}
+}
+
+func TestEmailsRepo_UpdateFolderAssignment_EmptyLocalPathStoresNull(t *testing.T) {
+	emails, folders, accounts, w := openTestEmailsRepo(t)
+	ctx := context.Background()
+	accountID := mustCreateAccount(t, accounts)
+	source := mustCreateFolder(t, folders, accountID, "INBOX")
+	target := mustCreateFolder(t, folders, accountID, "Reorganized")
+
+	emailID := insertEmail(t, emails, w, accountID, source.ID, 1)
+
+	if err := w.Do(ctx, func(tx *sql.Tx) error {
+		return emails.UpdateFolderAssignment(ctx, tx, emailID, target.ID, manualMoveUIDBase, "")
+	}); err != nil {
+		t.Fatalf("UpdateFolderAssignment: %v", err)
+	}
+
+	got, err := emails.GetByID(ctx, emailID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.LocalPath != "" {
+		t.Errorf("LocalPath = %q, want empty (S3-only email moved by folder, not file)", got.LocalPath)
+	}
+}
+
 func TestEmailsRepo_DeleteCompletely_CascadesRestoreLogs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "marchi.db")
 	sqlDB, err := db.Open(path)

@@ -215,6 +215,7 @@ func SyncAccountGmailAPI(
 		action := domain.ActionArchive
 		if matched := rules.FirstMatch(activeRules, candidateFrom(md, attachments, raw, folder.FolderName, a.ID)); matched != nil {
 			action = matched.Action
+			total.addRuleMatch(matched.ID)
 		}
 		if action == domain.ActionSkip {
 			total.Skipped++
@@ -276,6 +277,17 @@ func SyncAccountGmailAPI(
 	if firstErr == nil {
 		if err := accountsRepo.UpdateGmailHistoryID(ctx, a.ID, nextHistoryID); err != nil {
 			firstErr = fmt.Errorf("gmailapi sync: persisting history cursor: %w", err)
+		}
+		// Best-effort, same convention as search indexing and the audit
+		// log — see internal/sync/account.go's identical call for the
+		// full reasoning. Gated on firstErr == nil for the same reason
+		// the history cursor above is: a message whose match wasn't
+		// recorded because this run failed gets naturally re-evaluated
+		// (and re-recorded) on the retry that re-lists the same
+		// unadvanced-cursor batch, so recording it twice here would
+		// double-count it.
+		if rulesRepo != nil {
+			_ = rulesRepo.RecordMatches(ctx, total.RuleMatches)
 		}
 	}
 

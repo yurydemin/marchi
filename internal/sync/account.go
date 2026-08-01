@@ -169,6 +169,7 @@ func SyncAccount(
 	}
 
 	results := make([]FolderResult, 0, len(folders))
+	ruleMatches := make(map[int64]int)
 	var firstErr error
 	for _, folder := range folders {
 		if firstErr != nil {
@@ -206,11 +207,26 @@ func SyncAccount(
 		// ever sets firstErr/syncErr.
 		total.Errors += stats.Errors + stats.RuleActionErrors
 		total.IndexErrors += stats.IndexErrors
+		for ruleID, n := range stats.RuleMatches {
+			ruleMatches[ruleID] += n
+		}
 		results = append(results, FolderResult{Folder: folder, Fetched: stats.Archived})
 		if fetchErr != nil {
 			firstErr = fmt.Errorf("sync: fetching %q: %w", folder.FolderName, fetchErr)
 		}
 	}
 	syncErr = firstErr
+
+	// Best-effort, same convention as search indexing and the audit log:
+	// a stats-recording failure is silently swallowed rather than turned
+	// into a sync failure (P2-15's "rule statistics" are a secondary
+	// signal, not data whose loss should ever mask an otherwise-successful
+	// sync). rulesRepo is nil exactly when the caller never loaded rules
+	// in the first place (see activeRules above), so there's nothing to
+	// record against.
+	if rulesRepo != nil {
+		_ = rulesRepo.RecordMatches(ctx, ruleMatches)
+	}
+
 	return results, firstErr
 }

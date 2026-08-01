@@ -266,6 +266,83 @@ paths:
           content: { text/plain: { schema: { type: string } } }
         "500": { $ref: "#/components/responses/ServerError" }
 
+  /emails/bulk-delete:
+    post:
+      tags: [Emails]
+      summary: Permanently delete many emails from the archive in one call
+      description: >-
+        Provide either `email_ids` or `query` (used only when `email_ids` is
+        empty) — the same dual-mode selection `/search/export` uses. Every
+        selected email goes through the exact same delete as `DELETE
+        /emails/{id}`; one email failing (most commonly an S3-resident email
+        when S3 isn't currently reachable) doesn't abort the rest of the
+        batch — the response reports how many of each. Synchronous: no
+        job-id/WebSocket progress, since deleting is local-only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email_ids: { type: array, items: { type: integer, format: int64 } }
+                query: { $ref: "#/components/schemas/ExportQueryFilter" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: integer }
+                  failed: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /emails/bulk-folder:
+    post:
+      tags: [Emails]
+      summary: Move many emails into a different folder, same account only
+      description: >-
+        Provide either `email_ids` or `query`, same dual-mode selection as
+        bulk-delete/export. A folder is scoped to `account_id`, so every
+        selected email must belong to the same account as the batch's first
+        resolved email — one from a different account is counted as
+        `failed` rather than moved. `target_folder_name` is looked up (or,
+        if it doesn't exist yet for that account, created with
+        `sync_enabled: false`, since a folder created this way isn't tied to
+        a live IMAP/Gmail/Graph source); an existing folder's own
+        `uidvalidity`/`last_uid` bookkeeping is never touched, so a
+        currently-live-synced folder used as a move target keeps working
+        normally on its next real sync. The underlying .eml (if the email
+        has one locally — an S3-only email has nothing on disk to move) is
+        physically relocated into the target folder's Maildir directory.
+        Synchronous, like bulk-delete.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_folder_name]
+              properties:
+                email_ids: { type: array, items: { type: integer, format: int64 } }
+                query: { $ref: "#/components/schemas/ExportQueryFilter" }
+                target_folder_name: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  moved: { type: integer }
+                  failed: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
   /emails/{id}/download:
     get:
       tags: [Emails]
@@ -1085,6 +1162,8 @@ components:
         conditions: { $ref: "#/components/schemas/RuleNode" }
         action: { type: string, enum: [archive, skip, archive_and_delete, archive_and_mark_read] }
         is_active: { type: boolean }
+        match_count: { type: integer, description: "Cumulative count of messages this rule has matched across every sync run of every account (P2-15)." }
+        last_matched_at: { type: string, format: date-time, nullable: true, description: "Omitted/null if the rule has never matched." }
 
     RuleRequest:
       type: object
@@ -1230,6 +1309,8 @@ components:
         scope_id: { type: integer, format: int64, description: "Source account id (scope=account) or source folder id (scope=folder)." }
         target_account_id: { type: integer, format: int64 }
         target_folder_root: { type: string }
+        date_from: { type: string, description: "RFC3339 or YYYY-MM-DD, inclusive. Narrows scope's emails by Date before restoring; omitted/empty means unbounded." }
+        date_to: { type: string, description: "RFC3339 or YYYY-MM-DD, inclusive. Narrows scope's emails by Date before restoring; omitted/empty means unbounded." }
 
     RestoreLog:
       type: object

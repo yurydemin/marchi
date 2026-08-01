@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -31,13 +32,22 @@ type ruleResponse struct {
 	Conditions domain.RuleNode   `json:"conditions"`
 	Action     domain.RuleAction `json:"action"`
 	IsActive   bool              `json:"is_active"`
+	// MatchCount/LastMatchedAt are cumulative rule-firing statistics
+	// (P2-15) — see domain.Rule's own doc comment. LastMatchedAt is the
+	// zero value (omitted from JSON) if the rule has never matched.
+	MatchCount    int        `json:"match_count"`
+	LastMatchedAt *time.Time `json:"last_matched_at,omitempty"`
 }
 
 func ruleResponseFrom(r *domain.Rule) ruleResponse {
-	return ruleResponse{
+	resp := ruleResponse{
 		ID: r.ID, Name: r.Name, Priority: r.Priority, Conditions: r.Conditions, Action: r.Action,
-		IsActive: r.IsActive,
+		IsActive: r.IsActive, MatchCount: r.MatchCount,
 	}
+	if !r.LastMatchedAt.IsZero() {
+		resp.LastMatchedAt = &r.LastMatchedAt
+	}
+	return resp
 }
 
 func handleListRules(vault *vaultState) fiber.Handler {

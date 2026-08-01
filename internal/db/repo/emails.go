@@ -365,6 +365,49 @@ func (r *EmailsRepo) DeleteCompletely(ctx context.Context, tx *sql.Tx, emailID i
 	return nil
 }
 
+// manualMoveUIDBase is the floor of the synthetic UID range the bulk
+// folder-move API assigns to relocated emails. It sits far above any UID a
+// real IMAP/Gmail/Graph mailbox will ever reach in practice, so a row moved
+// into an existing, still-actively-synced folder can never collide with a
+// UID that folder's own Sync Engine run assigns later — see
+// FoldersRepo.GetOrCreateManual's doc comment for why folders.last_uid
+// itself is never touched by this path (which is what makes picking a
+// merely-unused-so-far UID, like existing-max+1, unsafe: for a real synced
+// folder that's usually last_uid+1 itself, exactly the next UID the Sync
+// Engine will try to claim).
+const manualMoveUIDBase = 4_000_000_000
+
+// NextManualMoveUID returns a UID within tx guaranteed unused among
+// folderID's existing rows, safe for the bulk folder-move handler to
+// assign to a relocated email without ever touching folders.last_uid.
+func (r *EmailsRepo) NextManualMoveUID(ctx context.Context, tx *sql.Tx, folderID int64) (uint32, error) {
+	var max sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT MAX(uid) FROM emails WHERE folder_id = ? AND uid >= ?`, folderID, manualMoveUIDBase).Scan(&max)
+	if err != nil {
+		return 0, fmt.Errorf("repo: finding next manual-move uid for folder %d: %w", folderID, err)
+	}
+	if !max.Valid || max.Int64 < manualMoveUIDBase {
+		return manualMoveUIDBase, nil
+	}
+	return uint32(max.Int64) + 1, nil
+}
+
+// UpdateFolderAssignment relocates emailID into a different folder — the
+// bulk folder-move API's DB-side counterpart to physically renaming the
+// underlying .eml file. Runs inside the caller's own Single-Writer
+// transaction, alongside the file rename it must stay consistent with.
+// localPath empty means the email has no local file (S3-only) — stored as
+// NULL, matching MarkMovedToS3Only's convention, not as an empty string.
+func (r *EmailsRepo) UpdateFolderAssignment(ctx context.Context, tx *sql.Tx, emailID, folderID int64, uid uint32, localPath string) error {
+	_, err := tx.ExecContext(ctx, `
+		UPDATE emails SET folder_id = ?, uid = ?, local_path = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`, folderID, uid, nullIfEmpty(localPath), emailID)
+	if err != nil {
+		return fmt.Errorf("repo: moving email %d to folder %d: %w", emailID, folderID, err)
+	}
+	return nil
+}
+
 func scanEmail(rows rowScanner) (*domain.Email, error) {
 	var (
 		e                                            domain.Email

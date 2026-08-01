@@ -139,6 +139,7 @@ func SyncAccountMSGraph(
 	}
 
 	results := make([]FolderResult, 0, len(graphFolders))
+	ruleMatches := make(map[int64]int)
 	var firstErr error
 	for _, gf := range graphFolders {
 		if firstErr != nil {
@@ -176,6 +177,20 @@ func SyncAccountMSGraph(
 		total.Bytes += stats.Bytes
 		total.Errors += stats.Errors + stats.RuleActionErrors
 		total.IndexErrors += stats.IndexErrors
+		// Only folded in on this specific folder's own success: a failed
+		// folder's deltaLink is left unpersisted (see
+		// syncOneMSGraphFolder), so a retry re-lists that folder's whole
+		// batch again — including messages already matched before the
+		// point of failure — and would double-count them here if their
+		// match had already been recorded on this attempt. A folder that
+		// succeeded, by contrast, has already advanced its own cursor and
+		// will never be re-listed, so recording its matches now is safe
+		// regardless of whether a later folder in the same run fails.
+		if folderErr == nil {
+			for ruleID, n := range stats.RuleMatches {
+				ruleMatches[ruleID] += n
+			}
+		}
 		results = append(results, FolderResult{Folder: folder, Fetched: stats.Archived})
 		if folderErr != nil {
 			firstErr = fmt.Errorf("msgraph sync: syncing folder %q: %w", folder.FolderName, folderErr)
@@ -183,6 +198,14 @@ func SyncAccountMSGraph(
 	}
 
 	syncErr = firstErr
+
+	// Best-effort, same convention as search indexing/the audit log/the
+	// IMAP and Gmail connectors' identical calls — see
+	// internal/sync/account.go's version for the full reasoning.
+	if rulesRepo != nil {
+		_ = rulesRepo.RecordMatches(ctx, ruleMatches)
+	}
+
 	return results, firstErr
 }
 
@@ -246,6 +269,7 @@ func syncOneMSGraphFolder(
 			action := domain.ActionArchive
 			if matched := rules.FirstMatch(activeRules, candidateFrom(md, attachments, raw, folder.FolderName, accountID)); matched != nil {
 				action = matched.Action
+				stats.addRuleMatch(matched.ID)
 			}
 			if action == domain.ActionSkip {
 				stats.Skipped++

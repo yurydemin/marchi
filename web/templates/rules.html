@@ -18,6 +18,7 @@
         <th class="px-4 py-2">{{T "rules.col_conditions"}}</th>
         <th class="px-4 py-2">{{T "common.action"}}</th>
         <th class="px-4 py-2">{{T "common.status"}}</th>
+        <th class="px-4 py-2">{{T "rules.col_stats"}}</th>
         <th class="px-4 py-2 text-right">{{T "common.actions"}}</th>
       </tr>
     </thead>
@@ -76,7 +77,7 @@ transition one row at a time.
 {{if .}}
 {{range .}}{{template "rule-row" .}}{{end}}
 {{else}}
-<tr><td colspan="6" class="px-4 py-6 text-center text-stone-500 dark:text-stone-400">{{T "rules.empty"}}</td></tr>
+<tr><td colspan="7" class="px-4 py-6 text-center text-stone-500 dark:text-stone-400">{{T "rules.empty"}}</td></tr>
 {{end}}
 {{end}}
 
@@ -185,6 +186,9 @@ identically.
       {{if .IsActive}}{{T "common.active"}}{{else}}{{T "common.paused"}}{{end}}
     </button>
   </td>
+  <td class="px-4 py-2 text-xs text-stone-500 dark:text-stone-400">
+    {{if .LastMatchedAt}}{{T "rules.matched_count" (dict "Count" .MatchCount)}}<br>{{T "rules.matched_last" (dict "Date" (formatTime .LastMatchedAt))}}{{else}}{{T "rules.matched_never"}}{{end}}
+  </td>
   <td class="px-4 py-2 text-right">
     <button class="text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100" hx-get="/rules/{{.ID}}/edit" hx-target="#rule-row-{{.ID}}" hx-swap="outerHTML">{{T "common.edit"}}</button>
     <button class="ml-2 text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-400" hx-delete="/rules/{{.ID}}" hx-target="#rules-tbody" hx-swap="innerHTML" hx-confirm="{{T "rules.delete_confirm"}}">{{T "common.delete"}}</button>
@@ -194,7 +198,7 @@ identically.
 
 {{define "rule-edit-row"}}
 <tr id="rule-row-{{.ID}}" data-rule-id="{{.ID}}">
-  <td colspan="6" class="px-4 py-3">
+  <td colspan="7" class="px-4 py-3">
     <form hx-put="/rules/{{.ID}}" hx-target="#rules-tbody" hx-swap="innerHTML">
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>

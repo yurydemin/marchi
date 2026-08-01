@@ -96,6 +96,67 @@ func (r *FoldersRepo) UpdateLastUID(ctx context.Context, tx *sql.Tx, folderID in
 	return nil
 }
 
+// GetOrCreateManual looks up accountID's folder named folderName within tx
+// and returns it completely untouched if found. It deliberately does NOT go
+// through UpsertFolder for the found case: UpsertFolder's ON CONFLICT resets
+// last_uid to 0 whenever the passed uidValidity doesn't match what's
+// stored, which would silently force a spurious full resync of a real,
+// actively-synced folder if this were ever called against one (the bulk
+// folder-move API has no real UIDVALIDITY to offer for a destination
+// folder). Only when no folder exists yet under this name is a brand-new
+// row created — uidvalidity=0/last_uid=0/sync_enabled=false, since it isn't
+// tied to any live IMAP/Gmail/Graph source the Sync Engine will ever
+// populate on its own.
+//
+// Callers must run this inside their own writer.Writer.Do transaction —
+// the Single Writer Pattern's serialization is what makes the lookup+create
+// here race-free against a concurrent live sync's own UpsertFolder call for
+// the same (account_id, folder_name).
+func (r *FoldersRepo) GetOrCreateManual(ctx context.Context, tx *sql.Tx, accountID int64, folderName string) (*domain.Folder, error) {
+	f, err := r.getByAccountAndNameTx(ctx, tx, accountID, folderName)
+	if err == nil {
+		return f, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	var nf domain.Folder
+	row := tx.QueryRowContext(ctx, `
+		INSERT INTO folders (account_id, folder_name, uidvalidity, last_uid, sync_enabled)
+		VALUES (?, ?, 0, 0, 0)
+		RETURNING id, account_id, folder_name, uidvalidity, last_uid, sync_enabled, msgraph_delta_link`,
+		accountID, folderName,
+	)
+	var syncEnabled int
+	var deltaLink sql.NullString
+	if err := row.Scan(&nf.ID, &nf.AccountID, &nf.FolderName, &nf.UIDValidity, &nf.LastUID, &syncEnabled, &deltaLink); err != nil {
+		return nil, fmt.Errorf("repo: creating manual folder %q: %w", folderName, err)
+	}
+	nf.SyncEnabled = syncEnabled != 0
+	nf.MSGraphDeltaLink = deltaLink.String
+	return &nf, nil
+}
+
+func (r *FoldersRepo) getByAccountAndNameTx(ctx context.Context, tx *sql.Tx, accountID int64, folderName string) (*domain.Folder, error) {
+	var f domain.Folder
+	var syncEnabled int
+	var deltaLink sql.NullString
+	err := tx.QueryRowContext(ctx, `
+		SELECT id, account_id, folder_name, uidvalidity, last_uid, sync_enabled, msgraph_delta_link
+		FROM folders WHERE account_id = ? AND folder_name = ?`, accountID, folderName,
+	).Scan(&f.ID, &f.AccountID, &f.FolderName, &f.UIDValidity, &f.LastUID, &syncEnabled, &deltaLink)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("repo: getting folder %q for account %d: %w", folderName, accountID, err)
+	}
+	f.SyncEnabled = syncEnabled != 0
+	f.MSGraphDeltaLink = deltaLink.String
+	return &f, nil
+}
+
 // GetByID returns one folder by id, or sql.ErrNoRows.
 func (r *FoldersRepo) GetByID(ctx context.Context, id int64) (*domain.Folder, error) {
 	var f domain.Folder

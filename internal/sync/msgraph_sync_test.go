@@ -458,6 +458,40 @@ func TestSyncAccountMSGraph_ArchiveAndDeleteRuleDeletesMessage(t *testing.T) {
 	}
 }
 
+func TestSyncAccountMSGraph_RecordsRuleMatchInRulesRepo(t *testing.T) {
+	env := newMSGraphTestEnv(t)
+	ruleID, err := env.rulesR.Create(context.Background(), &domain.Rule{
+		Name: "mark newsletters read", Priority: 1, IsActive: true, Action: domain.ActionArchiveAndMarkRead,
+		Conditions: domain.RuleNode{Type: domain.ConditionSubjectContains, Value: "newsletter"},
+	})
+	if err != nil {
+		t.Fatalf("creating rule: %v", err)
+	}
+
+	srv := newFakeMSGraphServer()
+	inbox := srv.addFolder("f-inbox", "Inbox")
+	inbox.deltaAdded = []string{"m1"}
+	srv.addMessage("m1", false, msgraphTestMessage("newsletter digest"))
+	client := srv.start(t)
+
+	a, _ := env.accountsR.GetByID(context.Background(), env.accountID)
+	if _, err := SyncAccountMSGraph(context.Background(), a, client, env.maildirRoot, "test-host",
+		env.w, env.foldersR, env.emailsR, env.attachmentsR, env.syncLogsR, env.rulesR, nil, nil, nil, nil); err != nil {
+		t.Fatalf("SyncAccountMSGraph: %v", err)
+	}
+
+	rule, err := env.rulesR.GetByID(context.Background(), ruleID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if rule.MatchCount != 1 {
+		t.Errorf("MatchCount = %d, want 1", rule.MatchCount)
+	}
+	if rule.LastMatchedAt.IsZero() {
+		t.Error("LastMatchedAt was not set")
+	}
+}
+
 func TestSyncAccountMSGraph_ArchiveAndMarkReadRuleSetsIsRead(t *testing.T) {
 	env := newMSGraphTestEnv(t)
 	if _, err := env.rulesR.Create(context.Background(), &domain.Rule{
